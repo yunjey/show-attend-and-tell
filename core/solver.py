@@ -4,6 +4,7 @@ import skimage.transform
 import numpy as np
 import math
 import os 
+import cPickle as pickle
 from scipy import ndimage
 from utils import decode_captions, sample_coco_minibatch
 
@@ -61,7 +62,10 @@ class CaptioningSolver(object):
         self.pretrained_model = kwargs.pop('pretrained_model', None)
         self.model_path = kwargs.pop('model_path', './model/')
         self.test_model = kwargs.pop('test_model', './model/lstm/model-1')
+        self.test_batch_size = kwargs.pop('test_batch_size', 100)
+        self.candidate_caption_path = kwargs.pop('candidate_caption_path', './data/val')
         self.image_path = kwargs.pop('image_path', './data/train2014_resized/')
+        self.test_image_path = kwargs.pop('test_image_path', './data/val2014_resized')
 
         # Book-keeping variables 
         #self.best_val_acc = 0
@@ -189,8 +193,11 @@ class CaptioningSolver(object):
                     print "best model: %s" %self.best_model
         
                 
-    def test(self, data):
+    def test(self, data, split='train'):
         '''
+        Sample captions and visualize attention weights for image data
+        Save sampled captions in pickle file
+
         Inputs:
         - data: dictionary with the following keys:
             - features: feature vectors of shape (5000, 196, 512)
@@ -204,16 +211,14 @@ class CaptioningSolver(object):
 
             
         # build graph for sampling
-        alphas, sampled_captions = self.model.build_sampler()    # (N, max_len, L), (N, max_len)
+        max_len = 20
+        alphas, sampled_captions = self.model.build_sampler(max_len)    # (N, max_len, L), (N, max_len)
         
         config = tf.ConfigProto(allow_soft_placement=True)
         with tf.Session(config=config) as sess:
             # restore trained model
             saver = tf.train.Saver(max_to_keep=10)
             saver.restore(sess, self.test_model)
-
-            n_iters = features.shape[0] // self.batch_size 
-            all_cap = np.ndarray((n_iters*self.batch_size, 17))
             
             # actual test step: sample captions and visualize attention
             _, features_batch, image_files = sample_coco_minibatch(data, self.batch_size)
@@ -226,7 +231,11 @@ class CaptioningSolver(object):
                 print "Sampled Caption: %s" %decoded[n]
 
                 # plot original image
-                img_path = os.path.join(self.image_path, image_files[n])
+                if split is 'train':
+                    image_path = self.image_path
+                else:
+                    image_path = self.test_image_path
+                img_path = os.path.join(image_path, image_files[n])
                 img = ndimage.imread(img_path)
                 plt.subplot(4, 5, 1)
                 plt.imshow(img)
@@ -245,6 +254,24 @@ class CaptioningSolver(object):
                     plt.imshow(alp_img, alpha=0.8)
                     plt.axis('off')
                 plt.show()
+
+            if split is not 'train':
+                # sample captions for all validation (or test) data and save into pickle format
+                all_sam_cap = np.ndarray((features.shape[0], max_len))
+                num_iter = features.shape[0] // self.test_batch_size
+                for i in range(num_iter):
+                    features_batch = features[i*self.test_batch_size:(i+1)*self.test_batch_size]
+                    feed_dict = { self.model.features: features_batch }
+                    all_sam_cap[i*self.test_batch_size:(i+1)*self.test_batch_size] = sess.run(sampled_captions, feed_dict)  
+
+                # decode all sampled captions
+                all_decoded = decode_captions(all_sam_cap, self.model.idx_to_word)
+                with open(os.path.join(self.candidate_caption_path, "%s.candidate.captions.pkl")) as f:
+                    pickle.dump(all_decoded, f, pickle.HIGHEST_PROTOCOL)
+
+
+
+
             
 '''
 for i in range(n_iters):
