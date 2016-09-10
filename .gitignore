@@ -1,0 +1,11 @@
+*.h5
+*.json
+.ipynb_checkpoints
+*.pyc
+*.pickle
+*.npy
+*.hkl
+*.pkl
+train2014_resized/*
+model/*
+
