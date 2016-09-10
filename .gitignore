@@ -8,4 +8,4 @@
 *.pkl
 train2014_resized/*
 model/*
-
+__init__.py
