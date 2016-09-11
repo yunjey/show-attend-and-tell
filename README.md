@@ -1,5 +1,5 @@
 # Attention Based Image Caption Generator
-Implementation of "Show, Attend and Tell" http://arxiv.org/abs/1502.03044
+implementation of "Show, Attend and Tell": http://arxiv.org/abs/1502.03044
 
 ## Reference
 author's source code : https://github.com/kelvinxu/arctic-captions
