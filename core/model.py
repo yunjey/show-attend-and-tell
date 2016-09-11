@@ -1,9 +1,11 @@
 import tensorflow as tf
 import numpy as np
-from layers import rnn_forward, rnn_step_forward_with_attention, lstm_forward, lstm_step_forward_with_attention
-from layers import word_embedding_forward, affine_forward, affine_tanh_forward, init_lstm
-from layers import temporal_affine_forward, temporal_softmax_loss, affine_relu_forward
+from layers import init_lstm, word_embedding_forward, encode_feature, attention_forward
+from layers import rnn_step_forward, lstm_step_forward
+from layers import affine_forward, affine_relu_forward, affine_tanh_forward
+from layers import temporal_affine_forward, temporal_affine_relu_forward, temporal_softmax_loss
 from utils import init_weight, init_bias
+
 """
 This is a implementation for attention based image captioning model.
 There are some notations. 
@@ -22,8 +24,8 @@ class CaptionGenerator(object):
         - build_model: receives features and captions then build graph where root nodes are loss and logits.  
         - build_sampler: receives features and build graph where root nodes are captions and alpha weights.
     """
-    def __init__(self, word_to_idx, batch_size= 100, dim_feature=[196, 512], dim_embed=128, 
-                    dim_hidden=128, n_time_step=None, cell_type='rnn', dtype=tf.float32):
+    def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=128, 
+                    dim_hidden=128, n_time_step=None, cell_type='rnn'):
 
         if cell_type not in {'rnn', 'lstm'}:
             raise ValueError('Invalid cell_type "%s"' % cell_type)
@@ -33,167 +35,162 @@ class CaptionGenerator(object):
         self.word_to_idx = word_to_idx
         self.idx_to_word = {i: w for w, i in word_to_idx.iteritems()}
         self.V = len(word_to_idx)
-        self.N = batch_size
-        self.H = dim_hidden
-        self.M = dim_embed
         self.L = dim_feature[0]
         self.D = dim_feature[1]
+        self.M = dim_embed
+        self.H = dim_hidden
         self.T = n_time_step
-        self.dtype = dtype
-        self.params = {}
 
         self._null = word_to_idx['<NULL>']
         self._start = word_to_idx.get('<START>', None)
         self._end = word_to_idx.get('<END>', None)
 
         with tf.device('/cpu:0'):
-            # Initialize word vectors
-            self.params['W_embed'] = tf.Variable(tf.random_uniform([self.V, self.M], -1.0, 1.0), name='Wemb')
-            
+            # Initialize word embedding matrix
+            self.W_embed = tf.Variable(tf.random_uniform([self.V, self.M], -1.0, 1.0), name='Wemb', dtype=tf.float32)
             
         with tf.device('/gpu:0'):
-            # Initialize parameters for generating initial hidden and cell states
-            self.params['W1_init_h'] = init_weight('W1_init_h', [self.D, self.H])
-            self.params['b1_init_h'] = init_bias('b1_init_h', [self.H])
-            self.params['W2_init_h'] = init_weight('W2_init_h', [self.H, self.H])
-            self.params['b2_init_h'] = init_bias('b2_init_h', [self.H])
-            self.params['W1_init_c'] = init_weight('W1_init_c', [self.D, self.H])
-            self.params['b1_init_c'] = init_bias('b1_init_c', [self.H])
-            self.params['W2_init_c'] = init_weight('W2_init_c', [self.H, self.H])
-            self.params['b2_init_c'] = init_bias('b2_init_c', [self.H])
+            # Initialize weights for generating initial hidden and cell states
+            self.W1_init_h = init_weight('W1_init_h', [self.D, self.H])
+            self.b1_init_h = init_bias('b1_init_h', [self.H])
+            self.W2_init_h = init_weight('W2_init_h', [self.H, self.H])
+            self.b2_init_h = init_bias('b2_init_h', [self.H])
+            self.W1_init_c = init_weight('W1_init_c', [self.D, self.H])
+            self.b1_init_c = init_bias('b1_init_c', [self.H])
+            self.W2_init_c = init_weight('W2_init_c', [self.H, self.H])
+            self.b2_init_c = init_bias('b2_init_c', [self.H])
 
-            # Initialize parametres for attention layer 
-            self.params['W_proj_x'] = init_weight('W_proj_x', [self.D, self.D])
-            self.params['W_proj_h'] = init_weight('W_proj_h', [self.H, self.D])
-            self.params['b_proj'] = init_bias('b_proj', [self.D])
-            self.params['W_att'] = init_weight('W_att', [self.D, 1])
+            # Initialize weights for attention layer 
+            self.W_proj_x = init_weight('W_proj_x', [self.D, self.D])
+            self.W_proj_h = init_weight('W_proj_h', [self.H, self.D])
+            self.b_proj = init_bias('b_proj', [self.D])
+            self.W_att = init_weight('W_att', [self.D, 1])
 
             # Initialize parameters for the RNN/LSTM
             dim_mul = {'lstm': 4, 'rnn': 1}[cell_type]
             dim_in = self.M + self.H + self.D
-            self.params['Wx'] = init_weight('Wx', [self.M, self.H * dim_mul], dim_in=dim_in)    
-            self.params['Wh'] = init_weight('Wh', [self.H, self.H * dim_mul], dim_in=dim_in)
-            self.params['Wz'] = init_weight('Wz', [self.D, self.H * dim_mul], dim_in=dim_in)
-            self.params['b'] = init_bias('b', [self.H * dim_mul])
+            self.Wx = init_weight('Wx', [self.M, self.H * dim_mul], dim_in=dim_in)    
+            self.Wh = init_weight('Wh', [self.H, self.H * dim_mul], dim_in=dim_in)
+            self.Wz = init_weight('Wz', [self.D, self.H * dim_mul], dim_in=dim_in)
+            self.b = init_bias('b', [self.H * dim_mul])
 
-            # Initialize parameters for output-to-vocab
-            self.params['W_MLP_embed'] =  init_weight('W_MLP_embed', [self.H, self.M])
-            self.params['b_MLP_embed'] =  init_weight('b_MLP_embed', [self.M])
-            self.params['W_MLP_vocab'] = init_weight('W_MLP_vocab', [self.M, self.V])
-            self.params['b_MLP_vocab'] = init_bias('b_MLP_vocab', [self.V])
-
-            # Cast parameters to correct dtype
-            for k, v in self.params.iteritems():
-                self.params[k] = tf.cast(v, self.dtype)
+            # Initialize weights for decode RNN/LSTM hidden state to vocab-size output vector
+            self.W1_decode =  init_weight('W1_decode', [self.H, self.M])
+            self.b1_decode =  init_weight('b1_decode', [self.M])
+            self.W2_decode = init_weight('W2_decode', [self.M, self.V])
+            self.b2_decode = init_bias('b2_decode', [self.V])
                 
             # Place holder for features and captions
-            self.features = tf.placeholder(tf.float32, [self.N, self.L, self.D])
-            self.captions = tf.placeholder(tf.int32, [self.N, self.T + 1])
+            self.features = tf.placeholder(tf.float32, [None, self.L, self.D])
+            self.captions = tf.placeholder(tf.int32, [None, self.T + 1])
 
 
     def build_model(self):
         """
-        Place Holder:
+        Input:
         - features: input image features of shape (N, L, D)
-        - captions: ground-truth captions; an integer array of shape (N, T+1) where
-          each element is in the range [0, V)
+        - captions: ground-truth captions; an integer array of shape (N, T+1) where each element is in the range [0, V)
         Returns:
-        - logits: score of shape (N, T, V)
-        - loss: scalar loss
+        - loss: scalar giving loss
         """
-        # place holder features and captions
+
+        # features and captions
         features = self.features
         captions = self.captions
 
-        # parameters
-        params = self.params
-
-        # hyper parameters
-        hyper_params = {'batch_size': self.N, 'spacial_size': self.L, 'dim_feature': self.D,
-                            'n_time_step': self.T, 'dim_hidden': self.H, 'vocab_size': self.V, 'dim_embed': self.M}
-
         # captions for input/output and mask matrix
-        captions_in = captions[:, :self.T]      # same as captions[:, :-1], tensorflow doesn't provide negative stop slice yet.
+        captions_in = captions[:, :self.T]      
         captions_out = captions[:, 1:]  
         mask = tf.not_equal(captions_out, self._null)
         
         
-        # generate initial hidden state using cnn features 
-        mean_features = tf.reduce_mean(features, 1)  # (N, D)
-        h0 = init_lstm(mean_features, params['W1_init_h'], params['b1_init_h'], params['W2_init_h'], params['b2_init_h'])
-        c0 = init_lstm(mean_features, params['W1_init_c'], params['b1_init_c'], params['W2_init_c'], params['b2_init_c'])
+        # generate initial hidden state using CNN features 
+        mean_features = tf.reduce_mean(features, 1)   # (N, D)
+        prev_h = init_lstm(mean_features, self.W1_init_h, self.b1_init_h, self.W2_init_h, self.b2_init_h)
+        prev_c = init_lstm(mean_features, self.W1_init_c, self.b1_init_c, self.W2_init_c, self.b2_init_c)
 
-        # generate input x (word vector)
-        x = word_embedding_forward(captions_in, params['W_embed'])  # (N, T, M)
+        # generate word vector
+        x = word_embedding_forward(captions_in, self.W_embed)   # (N, T, M)
 
-        # lstm forward
-        if self.cell_type == 'rnn':
-            h = rnn_forward(x, features, h0, params, hyper_params)
-        else: 
-            h = lstm_forward(x, features, h0, c0, params, hyper_params)   # (N, T, H)
+        # encode features
+        features_projected = encode_feature(features, self.W_proj_x)
+
+        h_list = []
+        for t in range(self.T):
+            # generate context vector 
+            context, _ = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)
+
+            # rnn/lstm forward prop
+            if self.cell_type == 'rnn':
+                next_h = rnn_step_forward(x[:,t,:], prev_h, context, self.Wx, self.Wh, self.Wz, self.b)
+                h_list.append(next_h)
+                prev_h = next_h
+            elif self.cell_type == 'lstm': 
+                next_h, next_c = lstm_step_forward(x[:,t,:], prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b) 
+                h_list.append(next_h) 
+                prev_h = next_h
+                prev_c = next_c
 
         # hidden-to-embed, embed-to-vocab
-        logits = temporal_affine_forward(h, params, hyper_params)  # (N, T, M)
+        h = tf.transpose(tf.pack(h_list), (1, 0, 2))    # (N, T, H)
+        logits_h = temporal_affine_relu_forward(h, self.W1_decode, self.b1_decode)   # (N, T, M)
+        logits_out = temporal_affine_forward(logits_h, self.W2_decode, self.b2_decode)   # (N, T, V)
        
-        # softmax loss
-        loss = temporal_softmax_loss(logits, captions_out, mask, hyper_params)
+        # compute softmax loss
+        loss = temporal_softmax_loss(logits_out, captions_out, mask)
 
-        # generated word indices
-        generated_captions = tf.argmax(logits, 2)   # (N, T)
-
-        return loss, generated_captions
+        return loss
 
 
     def build_sampler(self, max_len=20):
         """
         Input:
-        - max_len: max length for generating cations
-        Place Holder:
         - features: input image features of shape (N, L, D)
+        - max_len: max length for generating cations
         
         Returns
-        - sampled_words: sampled word indices
-        - alphas: sampled alpha weights
+        - alphas: soft attention weights for visualization
+        - sampled_captions: sampled word indices
         """
 
-        # features, parameters and hyper-parameters
+        # features
         features = self.features
-        params = self.params
-        hyper_params = {'batch_size': self.N, 'spacial_size': self.L, 'dim_feature': self.D,
-                            'n_time_step': self.T, 'dim_hidden': self.H, 'vocab_size': self.V}
+        
+        # generate initial hidden state using CNN features 
+        mean_features = tf.reduce_mean(features, 1)   # (N, D)
+        prev_h = init_lstm(mean_features, self.W1_init_h, self.b1_init_h, self.W2_init_h, self.b2_init_h)
+        prev_c = init_lstm(mean_features, self.W1_init_c, self.b1_init_c, self.W2_init_c, self.b2_init_c)
 
-        # generate initial hidden state using cnn features 
-        mean_features = tf.reduce_mean(features, 1)  
-        prev_h = init_lstm(mean_features, params['W1_init_h'], params['b1_init_h'], params['W2_init_h'], params['b2_init_h'])
-        prev_c = init_lstm(mean_features, params['W1_init_c'], params['b1_init_c'], params['W2_init_c'], params['b2_init_c'])
+        # encode features
+        features_projected = encode_feature(features, self.W_proj_x)
 
         sampled_word_list = []
         alpha_list = []
-
         for t in range(max_len):
             # embed the previous generated word
             if t == 0:
-                x = word_embedding_forward(tf.fill([self.N], self._start), params['W_embed'])
-                #x = tf.zeros([self.N, self.M])            # what about assign word vector for '<START>' token ?
+                x = word_embedding_forward(tf.fill([tf.shape(features)[0]], self._start), self.W_embed)
             else:
-                x = word_embedding_forward(sampled_word, params['W_embed'])    # (N, M)
+                x = word_embedding_forward(sampled_word, self.W_embed)    # (N, M)
 
-            # lstm forward
+            # generate context vector 
+            context, alpha = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)
+
+            # rnn/lstm forward prop
             if self.cell_type == 'rnn':
-                h, alpha = rnn_step_forward_with_attention(x, features, prev_h, params, hyper_params)    #  (N, H), (N, L)
-            else: 
-                h, c, alpha = lstm_step_forward_with_attention(x, features, prev_h, prev_c, params, hyper_params)    # (N, H), (N, H), (N, L)
+                h = rnn_step_forward(x, prev_h, context, self.Wx, self.Wh, self.Wz, self.b)
+                prev_h = h
+            elif self.cell_type == 'lstm': 
+                h, c = lstm_step_forward(x, prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b) 
+                prev_h = h
                 prev_c = c
                 
-            # prepare for next time step
-            prev_h = h
-            
             # save alpha weights
             alpha_list.append(alpha)
 
             # generate scores(logits) from current hidden state
-            logits_h = affine_relu_forward(h, params['W_MLP_embed'], params['b_MLP_embed'])
-            logits_out = affine_forward(logits_h, params['W_MLP_vocab'], params['b_MLP_vocab'])      
+            logits_h = affine_relu_forward(h, self.W1_decode, self.b1_decode)
+            logits_out = affine_forward(logits_h, self.W2_decode, self.b2_decode)      
 
             # sample word indices with logits
             sampled_word = tf.argmax(logits_out, 1)        # (N, ) where value is in the range of [0, V) 
