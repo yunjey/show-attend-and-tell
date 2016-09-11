@@ -109,7 +109,7 @@ class CaptioningSolver(object):
         image_idxs = image_idxs[rand_idxs]
 
         # build graph for training
-        loss, _ = self.model.build_model()
+        loss = self.model.build_model()
         _, generated_captions = self.model.build_sampler()
         optimizer = self.optimizer(self.learning_rate).minimize(loss)
 
@@ -118,8 +118,9 @@ class CaptioningSolver(object):
         print "data size: %d" %n_examples
         print "batch size: %d" %self.batch_size
         
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.24)
-        config = tf.ConfigProto(allow_soft_placement = True, gpu_options=gpu_options)
+        #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.24)
+        config = tf.ConfigProto(allow_soft_placement = True)
+        config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
             with tf.device('/gpu:1'):
                 tf.initialize_all_variables().run()
@@ -266,8 +267,9 @@ class CaptioningSolver(object):
 
                 # decode all sampled captions
                 all_decoded = decode_captions(all_sam_cap, self.model.idx_to_word)
-                with open(os.path.join(self.candidate_caption_path, "%s.candidate.captions.pkl")) as f:
+                with open(os.path.join(self.candidate_caption_path, "%s.candidate.captions.pkl" %split), 'wb') as f:
                     pickle.dump(all_decoded, f, pickle.HIGHEST_PROTOCOL)
+                    print "saved %s.candidate.captions.pkl.." %split
 
 
 
