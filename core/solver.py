@@ -63,7 +63,7 @@ class CaptioningSolver(object):
         self.model_path = kwargs.pop('model_path', './model/')
         self.test_model = kwargs.pop('test_model', './model/lstm/model-1')
         self.test_batch_size = kwargs.pop('test_batch_size', 100)
-        self.candidate_caption_path = kwargs.pop('candidate_caption_path', './data/val')
+        self.candidate_caption_path = kwargs.pop('candidate_caption_path', './data/')
         self.image_path = kwargs.pop('image_path', './data/train2014_resized/')
         self.test_image_path = kwargs.pop('test_image_path', './data/val2014_resized')
 
@@ -95,7 +95,7 @@ class CaptioningSolver(object):
         Train model and print out some useful information(loss, generated captions) for debugging.  
         """
         n_examples = self.data['captions'].shape[0]
-        n_iters_per_epoch = n_examples // self.batch_size
+        n_iters_per_epoch = int(np.ceil(float(n_examples) / self.batch_size))
 
         # get data
         features = self.data['features']
@@ -119,7 +119,7 @@ class CaptioningSolver(object):
         print "batch size: %d" %self.batch_size
         
         #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.24)
-        config = tf.ConfigProto(allow_soft_placement = True)
+        config = tf.ConfigProto(allow_soft_placement = True, log_device_placement=True)
         config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
             with tf.device('/gpu:1'):
@@ -180,7 +180,7 @@ class CaptioningSolver(object):
                     print "previous epoch loss: ", prev_loss
                     print "current epoch loss", curr_loss
                     if prev_loss < curr_loss:
-                        #saver.restore(sess, os.path.join(self.model_path, self.best_model))
+                        saver.restore(sess, os.path.join(self.model_path, self.best_model))
                         self.learning_rate /= 2
                         print "reduce learning rate to %f..!" %self.learning_rate
                     else:
@@ -194,7 +194,7 @@ class CaptioningSolver(object):
                     print "best model: %s" %self.best_model
         
                 
-    def test(self, data, split='train'):
+    def test(self, data, split='train', attention_visualization=True, save_sampled_captions=True):
         '''
         Sample captions and visualize attention weights for image data
         Save sampled captions in pickle file
@@ -227,39 +227,40 @@ class CaptioningSolver(object):
             alps, sam_cap = sess.run([alphas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
             decoded = decode_captions(sam_cap, self.model.idx_to_word)
 
-            # visualize 10 images and captions 
-            for n in range(10):
-                print "Sampled Caption: %s" %decoded[n]
+            if attention_visualization:
+                # visualize 10 images and captions 
+                for n in range(10):
+                    print "Sampled Caption: %s" %decoded[n]
 
-                # plot original image
-                if split is 'train':
-                    image_path = self.image_path
-                else:
-                    image_path = self.test_image_path
-                img_path = os.path.join(image_path, image_files[n])
-                img = ndimage.imread(img_path)
-                plt.subplot(4, 5, 1)
-                plt.imshow(img)
-                plt.axis('off')
-
-                # plot image with attention weights
-                words = decoded[n].split(" ")
-                for t in range(len(words)):
-                    if t>18:
-                        break
-                    plt.subplot(4, 5, t+2)
-                    plt.text(0, 1, words[t], color='black', backgroundcolor='white', fontsize=12)
+                    # plot original image
+                    if split is 'train':
+                        image_path = self.image_path
+                    else:
+                        image_path = self.test_image_path
+                    img_path = os.path.join(image_path, image_files[n])
+                    img = ndimage.imread(img_path)
+                    plt.subplot(4, 5, 1)
                     plt.imshow(img)
-                    alp_curr = alps[n,t,:].reshape(14,14)
-                    alp_img = skimage.transform.pyramid_expand(alp_curr, upscale=16, sigma=20)
-                    plt.imshow(alp_img, alpha=0.8)
                     plt.axis('off')
-                plt.show()
 
-            if split is not 'train':
-                # sample captions for all validation (or test) data and save into pickle format
+                    # plot image with attention weights
+                    words = decoded[n].split(" ")
+                    for t in range(len(words)):
+                        if t>18:
+                            break
+                        plt.subplot(4, 5, t+2)
+                        plt.text(0, 1, words[t], color='black', backgroundcolor='white', fontsize=12)
+                        plt.imshow(img)
+                        alp_curr = alps[n,t,:].reshape(14,14)
+                        alp_img = skimage.transform.pyramid_expand(alp_curr, upscale=16, sigma=20)
+                        plt.imshow(alp_img, alpha=0.8)
+                        plt.axis('off')
+                    plt.show()
+
+            if save_sampled_captions:
+                # sample captions for all dataset and save into pickle format
                 all_sam_cap = np.ndarray((features.shape[0], max_len))
-                num_iter = features.shape[0] // self.test_batch_size
+                num_iter = int(np.ceil(float(features.shape[0]) / self.test_batch_size))
                 for i in range(num_iter):
                     features_batch = features[i*self.test_batch_size:(i+1)*self.test_batch_size]
                     feed_dict = { self.model.features: features_batch }
@@ -267,29 +268,11 @@ class CaptioningSolver(object):
 
                 # decode all sampled captions
                 all_decoded = decode_captions(all_sam_cap, self.model.idx_to_word)
-                with open(os.path.join(self.candidate_caption_path, "%s.candidate.captions.pkl" %split), 'wb') as f:
+                with open(os.path.join(self.candidate_caption_path, "%s/%s.candidate.captions.pkl" %(split,split)), 'wb') as f:
                     pickle.dump(all_decoded, f, pickle.HIGHEST_PROTOCOL)
                     print "saved %s.candidate.captions.pkl.." %split
 
 
 
 
-            
-'''
-for i in range(n_iters):
-            features_batch = features[i*self.batch_size:(i+1)*self.batch_size]
-            feed_dict = { self.model.features: features_batch }
-            alps, sam_cap = sess.run([alphas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
-            all_cap[i*self.batch_size:(i+1)*self.batch_siz] = sam_cap
-
-                # actual test step: sample captions and visualize attention
-                features_batch = features[i*self.batch_size:(i+1)*self.batch_size]
-                feed_dict = { self.model.features: features_batch }
-                alps, sam_cap = sess.run([alphas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
-                all_cap[i*self.batch_size:(i+1)*self.batch_siz] = sam_cap
-
-            # decode captions
-            decoded = decode_captions(all_cap, self.model.idx_to_word)
-            
-        return decoded
-'''
+  
