@@ -1,9 +1,9 @@
 import tensorflow as tf
 import numpy as np
 from layers import init_lstm, word_embedding_forward, encode_feature, attention_forward
-from layers import rnn_step_forward, lstm_step_forward
-from layers import affine_forward, affine_relu_forward, affine_tanh_forward
-from layers import temporal_affine_forward, temporal_affine_relu_forward, temporal_softmax_loss
+from layers import rnn_step_forward, gru_step_forward, lstm_step_forward
+from layers import affine_forward, affine_relu_forward, affine_tanh_forward, softmax_loss 
+from layers import temporal_affine_forward, temporal_affine_relu_forward, temporal_softmax_loss, temporal_affine_tanh_forward
 from utils import init_weight, init_bias
 
 """
@@ -25,15 +25,17 @@ class CaptionGenerator(object):
         - build_sampler: receives features and build graph where root nodes are captions and alpha weights.
     """
     def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=128, 
-                    dim_hidden=128, n_time_step=None, cell_type='rnn'):
+                    dim_hidden=128, n_time_step=None, cell_type='rnn', prev2out=False, ctx2out=False):
 
-        if cell_type not in {'rnn', 'lstm'}:
+        if cell_type not in {'rnn', 'gru', 'lstm'}:
             raise ValueError('Invalid cell_type "%s"' % cell_type)
 
         # Initialize some hyper parameters
         self.cell_type = cell_type
         self.word_to_idx = word_to_idx
         self.idx_to_word = {i: w for w, i in word_to_idx.iteritems()}
+        self.prev2out = prev2out
+        self.ctx2out = ctx2out
         self.V = len(word_to_idx)
         self.L = dim_feature[0]
         self.D = dim_feature[1]
@@ -49,40 +51,46 @@ class CaptionGenerator(object):
             # Initialize word embedding matrix
             self.W_embed = tf.Variable(tf.random_uniform([self.V, self.M], -1.0, 1.0), name='Wemb', dtype=tf.float32)
             
-        with tf.device('/gpu:0'):
-            # Initialize weights for generating initial hidden and cell states
-            self.W1_init_h = init_weight('W1_init_h', [self.D, self.H])
-            self.b1_init_h = init_bias('b1_init_h', [self.H])
-            self.W2_init_h = init_weight('W2_init_h', [self.H, self.H])
-            self.b2_init_h = init_bias('b2_init_h', [self.H])
-            self.W1_init_c = init_weight('W1_init_c', [self.D, self.H])
-            self.b1_init_c = init_bias('b1_init_c', [self.H])
-            self.W2_init_c = init_weight('W2_init_c', [self.H, self.H])
-            self.b2_init_c = init_bias('b2_init_c', [self.H])
+        # Initialize weights for generating initial hidden and cell states
+        self.W1_init_h = init_weight('W1_init_h', [self.D, self.H])
+        self.b1_init_h = init_bias('b1_init_h', [self.H])
+        self.W2_init_h = init_weight('W2_init_h', [self.H, self.H])
+        self.b2_init_h = init_bias('b2_init_h', [self.H])
+        self.W1_init_c = init_weight('W1_init_c', [self.D, self.H])
+        self.b1_init_c = init_bias('b1_init_c', [self.H])
+        self.W2_init_c = init_weight('W2_init_c', [self.H, self.H])
+        self.b2_init_c = init_bias('b2_init_c', [self.H])
 
-            # Initialize weights for attention layer 
-            self.W_proj_x = init_weight('W_proj_x', [self.D, self.D])
-            self.W_proj_h = init_weight('W_proj_h', [self.H, self.D])
-            self.b_proj = init_bias('b_proj', [self.D])
-            self.W_att = init_weight('W_att', [self.D, 1])
+        # Initialize weights for attention layer 
+        self.W_proj_x = init_weight('W_proj_x', [self.D, self.D])
+        self.W_proj_h = init_weight('W_proj_h', [self.H, self.D])
+        self.b_proj = init_bias('b_proj', [self.D])
+        self.W_att = init_weight('W_att', [self.D, 1])
 
-            # Initialize parameters for the RNN/LSTM
-            dim_mul = {'lstm': 4, 'rnn': 1}[cell_type]
-            dim_in = self.M + self.H + self.D
-            self.Wx = init_weight('Wx', [self.M, self.H * dim_mul], dim_in=dim_in)    
-            self.Wh = init_weight('Wh', [self.H, self.H * dim_mul], dim_in=dim_in)
-            self.Wz = init_weight('Wz', [self.D, self.H * dim_mul], dim_in=dim_in)
-            self.b = init_bias('b', [self.H * dim_mul])
+        # Initialize weights for the RNN/GRU/LSTM
+        dim_mul = {'rnn': 1, 'gru': 2, 'lstm': 4}[cell_type]
+        dim_in = self.M + self.H + self.D
+        self.Wx = init_weight('Wx', [self.M, self.H * dim_mul], dim_in=dim_in)    
+        self.Wh = init_weight('Wh', [self.H, self.H * dim_mul], dim_in=dim_in)
+        self.Wz = init_weight('Wz', [self.D, self.H * dim_mul], dim_in=dim_in)
+        self.b = init_bias('b', [self.H * dim_mul])
+        # additional weights for GRU
+        if cell_type == 'gru':
+            self.Ux = init_weight('Ux', [self.M, self.H], dim_in=dim_in)    
+            self.Uh = init_weight('Uh', [self.H, self.H], dim_in=dim_in)
+            self.Uz = init_weight('Uz', [self.D, self.H], dim_in=dim_in)
+            self.b_u = init_bias('b_u', [self.H])
 
-            # Initialize weights for decode RNN/LSTM hidden state to vocab-size output vector
-            self.W1_decode =  init_weight('W1_decode', [self.H, self.M])
-            self.b1_decode =  init_weight('b1_decode', [self.M])
-            self.W2_decode = init_weight('W2_decode', [self.M, self.V])
-            self.b2_decode = init_bias('b2_decode', [self.V])
-                
-            # Place holder for features and captions
-            self.features = tf.placeholder(tf.float32, [None, self.L, self.D])
-            self.captions = tf.placeholder(tf.int32, [None, self.T + 1])
+        # Initialize weights for decode RNN/LSTM hidden state to vocab-size output vector
+        self.W1_decode =  init_weight('W1_decode', [self.H, self.M])
+        self.b1_decode =  init_bias('b1_decode', [self.M])
+        self.W2_decode = init_weight('W2_decode', [self.M, self.V])
+        self.b2_decode = init_bias('b2_decode', [self.V])
+        self.W_ctx2out = init_weight('W_ctx2out', [self.D, self.M])
+            
+        # Place holder for features and captions
+        self.features = tf.placeholder(tf.float32, [None, self.L, self.D])
+        self.captions = tf.placeholder(tf.int32, [None, self.T + 1])
 
 
     def build_model(self):
@@ -115,7 +123,7 @@ class CaptionGenerator(object):
         # encode features
         features_projected = encode_feature(features, self.W_proj_x)
 
-        h_list = []
+        loss = 0.0
         for t in range(self.T):
             # generate context vector 
             context, _ = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)
@@ -123,21 +131,27 @@ class CaptionGenerator(object):
             # rnn/lstm forward prop
             if self.cell_type == 'rnn':
                 next_h = rnn_step_forward(x[:,t,:], prev_h, context, self.Wx, self.Wh, self.Wz, self.b)
-                h_list.append(next_h)
+                prev_h = next_h
+            elif self.cell_type == 'gru':
+                next_h = gru_step_forward(x[:,t,:], prev_h, context, self.Wx, self.Wh, self.Wz, self.b, self.Ux, self.Uh, self.Uz, self.b_u)
                 prev_h = next_h
             elif self.cell_type == 'lstm': 
                 next_h, next_c = lstm_step_forward(x[:,t,:], prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b) 
-                h_list.append(next_h) 
                 prev_h = next_h
                 prev_c = next_c
 
-        # hidden-to-embed, embed-to-vocab
-        h = tf.transpose(tf.pack(h_list), (1, 0, 2))    # (N, T, H)
-        logits_h = temporal_affine_relu_forward(h, self.W1_decode, self.b1_decode)   # (N, T, M)
-        logits_out = temporal_affine_forward(logits_h, self.W2_decode, self.b2_decode)   # (N, T, V)
+            # hidden-to-embed, embed-to-vocab
+            logits = affine_forward(next_h, self.W1_decode, self.b1_decode)   # (N, M)
+            if self.prev2out:
+                logits += x[:,t,:]
+            if self.ctx2out:
+                logits += tf.matmul(context, self.W_ctx2out)
+
+            logits_h = tf.nn.tanh(logits)
+            logits_out = affine_forward(logits_h, self.W2_decode, self.b2_decode)   # (N, V)
        
-        # compute softmax loss
-        loss = temporal_softmax_loss(logits_out, captions_out, mask)
+            # compute softmax loss
+            loss += softmax_loss(logits_out, captions_out[:, t], mask[:, t])
 
         return loss
 
@@ -180,6 +194,9 @@ class CaptionGenerator(object):
             if self.cell_type == 'rnn':
                 h = rnn_step_forward(x, prev_h, context, self.Wx, self.Wh, self.Wz, self.b)
                 prev_h = h
+            elif self.cell_type == 'gru':
+                h = gru_step_forward(x, prev_h, context, self.Wx, self.Wh, self.Wz, self.b, self.Ux, self.Uh, self.Uz, self.b_u)
+                prev_h = h
             elif self.cell_type == 'lstm': 
                 h, c = lstm_step_forward(x, prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b) 
                 prev_h = h
@@ -189,7 +206,12 @@ class CaptionGenerator(object):
             alpha_list.append(alpha)
 
             # generate scores(logits) from current hidden state
-            logits_h = affine_relu_forward(h, self.W1_decode, self.b1_decode)
+            logits = affine_tanh_forward(h, self.W1_decode, self.b1_decode)
+            if self.prev2out:
+                logits += x
+            if self.ctx2out:
+                logits += tf.matmul(context, self.W_ctx2out)
+            logits_h = tf.nn.tanh(logits)
             logits_out = affine_forward(logits_h, self.W2_decode, self.b2_decode)      
 
             # sample word indices with logits

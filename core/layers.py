@@ -23,7 +23,8 @@ def init_lstm(X, W1, b1, W2, b2):
     Returns:
     - out: output data of shape (N, H).
     """
-    h = affine_tanh_forward(X, W1, b1)
+    h = affine_relu_forward(X, W1, b1)
+    # TODO: Drop Out for only h, not out 
     out = affine_tanh_forward(h, W2, b2)
     return out
 
@@ -96,6 +97,30 @@ def rnn_step_forward(X, prev_h, context, Wx, Wh, Wz, b):
     h = tf.nn.tanh(tf.matmul(X, Wx) + tf.matmul(prev_h, Wh) + tf.matmul(context, Wz)) + b
     return h
 
+def gru_step_forward(X, prev_h, context, Wx, Wh, Wz, b, Ux, Uh, Uz, b_u):
+    """
+    Inputs:
+    - X: word vector for current time step of shape (N, M).
+    - context: context vector of shape (N, D)
+    - prev_h: previous hidden state of shape (N, H).
+    - Wx: matrix for wordvec-to-hidden of shape (M, 2H).
+    - Wh: matrix for  hidden-to-hidden of shape (H, 2H).
+    - Wz: matrix for context-to-hidden of shape(D, 2H).
+    - b: biases of shape (2H,).
+    - Ux: matrix for wordvec-to-hidden of shape (M, H).
+    - Uh: matrix for  hidden-to-hidden of shape (H, H).
+    - Uz: matrix for context-to-hidden of shape(D, H).
+    - b_u: biases of shape (H,).
+    Returns:
+    - h: hidden state at current time step, of shape (N, H).
+    """
+    a = tf.matmul(X, Wx) + tf.matmul(prev_h, Wh) + tf.matmul(context, Wz) + b
+    a_z, a_r = tf.split(1, 2, a)
+    z = tf.nn.sigmoid(a_z)
+    r = tf.nn.sigmoid(a_r)
+    h = tf.nn.tanh(tf.matmul(X, Ux) + r * tf.matmul(prev_h, Uh) + tf.matmul(context, Uz) + b_u)
+    return (1 - z) * prev_h + z * h
+
 def lstm_step_forward(X, prev_h, prev_c, context, Wx, Wh, Wz, b):
     """
     Inputs:
@@ -122,7 +147,7 @@ def lstm_step_forward(X, prev_h, prev_c, context, Wx, Wh, Wz, b):
     c = f * prev_c + i * g
     h = o * tf.nn.tanh(c) 
     return h, c
-
+ 
 def affine_forward(X, W, b):
     """
     Inputs:
@@ -159,6 +184,7 @@ def affine_tanh_forward(X, W, b):
     out = tf.nn.tanh(tf.matmul(X, W) + b)
     return out
 
+
 def temporal_affine_forward(X, W, b):
     """
     Inputs:
@@ -183,10 +209,38 @@ def temporal_affine_relu_forward(X, W, b):
     - W: weights of shape (H, V).
     - b: biases of shape (V,).
     Returns:
-    - out: Output data of shape (N, T, V).
+    - out: output data of shape (N, T, V).
     """
     out = temporal_affine_forward(X, W, b)
     return tf.nn.relu(out)
+
+def temporal_affine_tanh_forward(X, W, b):
+    """
+    Inputs:
+    - X: input data of shape (N, T, H).
+    - W: weights of shape (H, V).
+    - b: biases of shape (V,).
+    Returns:
+    - out: output data of shape (N, T, V).
+    """
+    out = temporal_affine_forward(X, W, b)
+    return tf.nn.tanh(out)
+
+def softmax_loss(X, y, mask):
+    """
+    Inputs:
+    - X: input scores of shape (N, V).
+    - y: ground-truth indices of shape (N,) where each element is in the range [0, V).
+    - mask: boolean array of shape (N,) where mask[i] tells whether or not the scores at X[i] should contribute to the loss.
+    Returns:
+    - loss: scalar giving loss
+    """
+    V =  tf.shape(X)[1]
+
+    y_onehot = tf.cast(tf.one_hot(y, V, on_value=1), tf.float32)
+    loss = tf.nn.softmax_cross_entropy_with_logits(X, y_onehot) * tf.cast(mask, tf.float32)
+    loss = tf.reduce_sum(loss)
+    return loss
 
 def temporal_softmax_loss(X, y, mask):
     """
