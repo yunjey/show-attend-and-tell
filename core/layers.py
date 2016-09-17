@@ -137,7 +137,7 @@ def lstm_step_forward(X, prev_h, prev_c, context, Wx, Wh, Wz, b):
     - c: cell state at current time step, of shape (N, H).
     """
 
-    a = tf.matmul(X, Wx) + tf.matmul(prev_h, Wh) + tf.matmul(context, Wz) + b    
+    a = tf.matmul(X, Wx) + tf.matmul(prev_h, Wh) + b #+ tf.matmul(context, Wz) +    
     a_i, a_f, a_o, a_g = tf.split(1, 4, a)
     i = tf.nn.sigmoid(a_i)
     f = tf.nn.sigmoid(a_f)
@@ -158,6 +158,18 @@ def affine_forward(X, W, b):
     - out: output data of shape (N, H).
     """
     out =  tf.matmul(X, W) + b
+    return out
+
+def affine_sigmoid_forward(X, W, b):
+    """
+    Inputs:
+    - X: input data of shape (N, H).
+    - W: weights of shape (H, V).
+    - b: biases of shape (V,).
+    Returns:
+    - out: output data of shape (N, V).
+    """
+    out = tf.nn.sigmoid(tf.matmul(X, W) + b)
     return out
 
 def affine_relu_forward(X, W, b):
