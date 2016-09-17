@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from layers import init_lstm, word_embedding_forward, encode_feature, attention_forward
 from layers import rnn_step_forward, gru_step_forward, lstm_step_forward
-from layers import affine_forward, affine_relu_forward, affine_tanh_forward, softmax_loss 
+from layers import affine_forward, affine_sigmoid_forward, affine_relu_forward, affine_tanh_forward, softmax_loss 
 from layers import temporal_affine_forward, temporal_affine_relu_forward, temporal_softmax_loss, temporal_affine_tanh_forward
 from utils import init_weight, init_bias
 
@@ -25,7 +25,7 @@ class CaptionGenerator(object):
         - build_sampler: receives features and build graph where root nodes are captions and alpha weights.
     """
     def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=128, 
-                    dim_hidden=128, n_time_step=None, cell_type='rnn', prev2out=False, ctx2out=False):
+                    dim_hidden=128, n_time_step=None, cell_type='rnn', prev2out=True, ctx2out=True, alpha_c=0.0, selector=True):
 
         if cell_type not in {'rnn', 'gru', 'lstm'}:
             raise ValueError('Invalid cell_type "%s"' % cell_type)
@@ -36,6 +36,8 @@ class CaptionGenerator(object):
         self.idx_to_word = {i: w for w, i in word_to_idx.iteritems()}
         self.prev2out = prev2out
         self.ctx2out = ctx2out
+        self.alpha_c = alpha_c
+        self.selector = selector
         self.V = len(word_to_idx)
         self.L = dim_feature[0]
         self.D = dim_feature[1]
@@ -81,12 +83,18 @@ class CaptionGenerator(object):
             self.Uz = init_weight('Uz', [self.D, self.H], dim_in=dim_in)
             self.b_u = init_bias('b_u', [self.H])
 
+        # additional wwights for some options
+        if self.ctx2out:
+            self.W_ctx2out = init_weight('W_ctx2out', [self.D, self.M])
+        if self.selector:
+            self.W_sel = init_weight('W_sel', [self.H, self.D])
+            self.b_sel = init_bias('b_sel', [self.D])
+        
         # Initialize weights for decode RNN/LSTM hidden state to vocab-size output vector
         self.W1_decode =  init_weight('W1_decode', [self.H, self.M])
         self.b1_decode =  init_bias('b1_decode', [self.M])
         self.W2_decode = init_weight('W2_decode', [self.M, self.V])
         self.b2_decode = init_bias('b2_decode', [self.V])
-        self.W_ctx2out = init_weight('W_ctx2out', [self.D, self.M])
             
         # Place holder for features and captions
         self.features = tf.placeholder(tf.float32, [None, self.L, self.D])
@@ -124,9 +132,15 @@ class CaptionGenerator(object):
         features_projected = encode_feature(features, self.W_proj_x)
 
         loss = 0.0
+        alpha_list = []
         for t in range(self.T):
             # generate context vector 
-            context, _ = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)
+            context, alpha = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)
+            alpha_list.append(alpha)
+
+            if self.selector:
+                beta = affine_sigmoid_forward(prev_h, self.W_sel, self.b_sel)
+                context = beta * context
 
             # rnn/lstm forward prop
             if self.cell_type == 'rnn':
@@ -153,7 +167,12 @@ class CaptionGenerator(object):
             # compute softmax loss
             loss += softmax_loss(logits_out, captions_out[:, t], mask[:, t])
 
-        return loss
+        # doubly stochastic regularization
+        if self.alpha_c > 0:
+            alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     #  (N, T, L)
+            alpha_reg = self.alpha_c * tf.reduce_sum((1.0 - tf.reduce_sum(alphas, 1)) ** 2)    
+            loss += alpha_reg
+        return loss 
 
 
     def build_sampler(self, max_len=20):
@@ -189,6 +208,11 @@ class CaptionGenerator(object):
 
             # generate context vector 
             context, alpha = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)
+            alpha_list.append(alpha)
+
+            if self.selector:
+                beta = affine_sigmoid_forward(prev_h, self.W_sel, self.b_sel)
+                context = beta * context
 
             # rnn/lstm forward prop
             if self.cell_type == 'rnn':
@@ -201,9 +225,6 @@ class CaptionGenerator(object):
                 h, c = lstm_step_forward(x, prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b) 
                 prev_h = h
                 prev_c = c
-                
-            # save alpha weights
-            alpha_list.append(alpha)
 
             # generate scores(logits) from current hidden state
             logits = affine_tanh_forward(h, self.W1_decode, self.b1_decode)
