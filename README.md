@@ -8,7 +8,7 @@ Another tensorflow implementation : https://github.com/jazzsaxmafia/show_attend_
 
 (There are some bugs and visualization result is not good.)
 
-## Results
+## Result
 Below are results of generated captions and attention visualizations for given images.
 
 If you want to get more train details or visualization results, see `Attention-400000.ipynb`. 
