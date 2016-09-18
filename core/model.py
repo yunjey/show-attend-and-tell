@@ -167,11 +167,6 @@ class CaptionGenerator(object):
             # compute softmax loss
             loss += softmax_loss(logits_out, captions_out[:, t], mask[:, t])
 
-        # doubly stochastic regularization
-        if self.alpha_c > 0:
-            alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     #  (N, T, L)
-            alpha_reg = self.alpha_c * tf.reduce_sum((1.0 - tf.reduce_sum(alphas, 1)) ** 2)    
-            loss += alpha_reg
         return loss 
 
 
@@ -227,7 +222,7 @@ class CaptionGenerator(object):
                 prev_c = c
 
             # generate scores(logits) from current hidden state
-            logits = affine_tanh_forward(h, self.W1_decode, self.b1_decode)
+            logits = affine_forward(h, self.W1_decode, self.b1_decode)
             if self.prev2out:
                 logits += x
             if self.ctx2out:
