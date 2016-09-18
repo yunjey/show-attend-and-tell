@@ -7,6 +7,7 @@ import os
 import cPickle as pickle
 from scipy import ndimage
 from utils import decode_captions, sample_coco_minibatch
+from homogeneous import Homogeneous_Data
 
 
 class CaptioningSolver(object):
@@ -68,9 +69,9 @@ class CaptioningSolver(object):
         self.test_image_path = kwargs.pop('test_image_path', './data/val2014_resized')
 
         # Book-keeping variables 
-        #self.best_val_acc = 0
         self.best_model = None
         self.loss_history = []
+        #self.best_val_acc = 0
         #self.train_acc_history = []
         #self.val_acc_history = []
 
@@ -108,90 +109,94 @@ class CaptioningSolver(object):
         captions = captions[rand_idxs]
         image_idxs = image_idxs[rand_idxs]
 
+        # initialize class for generating same length of captions
+        train_iter = Homogeneous_Data(captions, batch_size=self.batch_size)
+
         # build graph for training
         loss = self.model.build_model()
         _, generated_captions = self.model.build_sampler()
         optimizer = self.optimizer(self.learning_rate).minimize(loss)
 
-        print "num epochs: %d" %self.n_epochs
-        print "iterations per epoch: %d" %n_iters_per_epoch
-        print "data size: %d" %n_examples
-        print "batch size: %d" %self.batch_size
+        print "The number of epoch: %d" %self.n_epochs
+        print "Data size: %d" %n_examples
+        print "Batch size: %d" %self.batch_size
+        print "Iterations per epoch: %d" %n_iters_per_epoch
         
-        #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.24)
         config = tf.ConfigProto(allow_soft_placement = True, log_device_placement=True)
+        #config.gpu_options.per_process_gpu_memory_fraction=0.6
         config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
-            with tf.device('/gpu:1'):
-                tf.initialize_all_variables().run()
-                saver = tf.train.Saver(max_to_keep=10)
-                if self.pretrained_model is not None:
-                    print "start training with pretrained model.."
-                    saver.restore(sess, self.pretrained_model)
+            tf.initialize_all_variables().run()
+            saver = tf.train.Saver(max_to_keep=10)
+            if self.pretrained_model is not None:
+                print "Start training with pretrained Model.."
+                saver.restore(sess, self.pretrained_model)
 
-                prev_loss = 10000000
-                curr_loss = 0
-                for e in range(self.n_epochs):
-                    for i in range(n_iters_per_epoch):
-                        # get batch data
-                        captions_batch = captions[i*self.batch_size:(i+1)*self.batch_size]
-                        image_idxs_batch = image_idxs[i*self.batch_size:(i+1)*self.batch_size]
-                        features_batch = features[image_idxs_batch]
+            prev_loss = 1000000000
+            curr_loss = 0
+            for e in range(self.n_epochs):
+                for i in range(n_iters_per_epoch):
+                    # get batch data (lengths of all mini-batch captions are same)
+                    same_caption_idxs = train_iter.get_next()
+                    captions_batch = captions[same_caption_idxs]
+                    image_idxs_batch = image_idxs[same_caption_idxs]
+                    features_batch = features[image_idxs_batch]
 
-                        # print initial loss
-                        if e == 0 and i == 0:
-                            feed_dict = { self.model.features: features_batch, self.model.captions: captions_batch }
-                            gen_caps, l = sess.run([generated_captions, loss], feed_dict)
-                            self.loss_history.append(l)
-                            print "\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*"
-                            print "Initial Train Loss: %.5f" %l
-                            decoded = decode_captions(gen_caps, self.model.idx_to_word)
-                            for j in range(2):
-                                print "Generated Caption: %s" %decoded[j]
-                            print "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*\n"
-
-                        # optimize
+                    # print initial loss
+                    if e == 0 and i == 0:
                         feed_dict = { self.model.features: features_batch, self.model.captions: captions_batch }
-                        _, l = sess.run([optimizer, loss], feed_dict)
-                        curr_loss += l
+                        gen_caps, l = sess.run([generated_captions, loss], feed_dict)
+                        self.loss_history.append(l)
+                        print "\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*"
+                        print "Initial train loss: %.5f" %l
+                        decoded = decode_captions(gen_caps, self.model.idx_to_word)
+                        for j in range(1):
+                            print "Generated caption: %s" %decoded[j]
+                        print "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*\n"
 
-                        # print info
-                        if (i+1) % self.print_every == 0:
-                            if e == 0:
-                                for j in range(2):
-                                    ground_truths = captions[image_idxs == image_idxs_batch[j]]
-                                    decoded = decode_captions(ground_truths, self.model.idx_to_word)
-                                    for gt in decoded:
-                                        print "Ground Truth %d: %s" %(j+1, gt)
-                            
-                            decoded = decode_captions(gen_caps, self.model.idx_to_word)
-                            gen_caps = sess.run(generated_captions, feed_dict)
-                            print "\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*"
-                            print "Train Loss at Epoch %d & Iteration %d: %.5f" %(e+1, i+1, l)
-                            decoded = decode_captions(gen_caps, self.model.idx_to_word)
-                            for j in range(2):
-                                print "Generated Caption: %s" %decoded[j]
-                            print "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*\n"
-                            # save loss history
-                            l = sess.run(loss, feed_dict)
-                            self.loss_history.append(l)
+                    # optimize
+                    feed_dict = { self.model.features: features_batch, self.model.captions: captions_batch }
+                    _, l = sess.run([optimizer, loss], feed_dict)
+                    curr_loss += l
+
+                    # print info
+                    if (i+1) % self.print_every == 0:
+                        # print out train loss 
+                        print "\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*"
+                        print "Train loss at epoch %d & iteration %d (mini-batch): %.5f" %(e+1, i+1, l)
+                        # print out ground truth
+                        for j in range(1):
+                            ground_truths = captions[image_idxs == image_idxs_batch[j]]
+                            decoded = decode_captions(ground_truths, self.model.idx_to_word)
+                            for i, gt in enumerate(decoded):
+                                print "Ground truth %d: %s" %(i+1, gt)        
+                        # print out generated captions                       
+                        decoded = decode_captions(gen_caps, self.model.idx_to_word)
+                        gen_caps = sess.run(generated_captions, feed_dict)
+                        decoded = decode_captions(gen_caps, self.model.idx_to_word)
+                        for j in range(1):
+                            print "Generated caption: %s" %decoded[j]
+                        print "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*\n"
+                        # save loss history
+                        l = sess.run(loss, feed_dict)
+                        self.loss_history.append(l)
 
 
-                    print "previous epoch loss: ", prev_loss
-                    print "current epoch loss", curr_loss
-                    if prev_loss < curr_loss:
-                        saver.restore(sess, os.path.join(self.model_path, self.best_model))
-                        self.learning_rate /= 2
-                        print "reduce learning rate to %f..!" %self.learning_rate
-                    else:
-                        prev_loss = curr_loss
-                        # save best model
-                        if (e+1) % self.save_every == 0:
-                            saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
-                            print "model-%s saved." %(e+1)
-                            self.best_model = 'model-%s' %(e+1)
-                    curr_loss = 0
-                    print "best model: %s" %self.best_model
+                print "Previous epoch loss: ", prev_loss
+                print "Current epoch loss", curr_loss
+                if prev_loss < curr_loss:
+                    #saver.restore(sess, os.path.join(self.model_path, self.best_model))
+                    self.learning_rate /= 2
+                    print "Reduce learning rate to %f..!" %self.learning_rate
+                else:
+                    prev_loss = curr_loss
+                    # save best model
+                    if (e+1) % self.save_every == 0:
+                        saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
+                        print "model-%s saved." %(e+1)
+                        self.best_model = 'model-%s' %(e+1)
+                curr_loss = 0
+                print "Best model: %s" %self.best_model
         
                 
     def test(self, data, split='train', attention_visualization=True, save_sampled_captions=True):
