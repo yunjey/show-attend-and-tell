@@ -5,10 +5,12 @@ This is a tensorflow implementation of "Show, Attend and Tell": http://arxiv.org
 Author's source code : https://github.com/kelvinxu/arctic-captions
 
 Another tensorflow implementation : https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
+
 (There are some bugs and visualization result is not good.)
 
 ## Results
 Below are results of generated captions and attention visualizations for given images.
+
 If you want to get more train details or visualization results, see `Attention-400000.ipynb`. 
 
 ###1. Training Data
