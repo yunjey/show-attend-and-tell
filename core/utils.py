@@ -1,18 +1,17 @@
 import tensorflow as tf
 import numpy as np
 import cPickle as pickle
-import hickle 
+import hickle
 import time
 import os
 
-
-def init_weight(name, shape, stddev=1.0, dim_in=None):
+def init_weight(name, shape, stddev=1.0, dtype=tf.float32, dim_in=None):
     if dim_in is None:
         dim_in = shape[0] 
-    return tf.Variable(tf.truncated_normal(shape, stddev=stddev/np.sqrt(dim_in)), name=name)
+    return tf.Variable(tf.truncated_normal(shape, stddev=stddev/np.sqrt(dim_in)), name=name, dtype=dtype)
 
-def init_bias(name, shape):
-    return tf.Variable(tf.zeros(shape), name=name)
+def init_bias(name, shape, dtype=tf.float32):
+    return tf.Variable(tf.zeros(shape), name=name, dtype=dtype)
 
 def load_coco_data(data_path='./data', split='train'):
     data_path = os.path.join(data_path, split)
@@ -25,9 +24,7 @@ def load_coco_data(data_path='./data', split='train'):
     with open(os.path.join(data_path, '%s.image.idxs.pkl' %split), 'rb') as f:
         data['image_idxs'] = pickle.load(f)
     with open(os.path.join(data_path, '%s.file.names.pkl' %split), 'rb') as f:
-        data['file_names'] = pickle.load(f)                    
-    with open(os.path.join(data_path, '%s.annotations.pkl' %split)     , 'rb') as f:
-        data['annotations'] = pickle.load(f)          
+        data['file_names'] = pickle.load(f)            
     if split == 'train':
         with open(os.path.join(data_path, 'word_to_idx.pkl'), 'rb') as f:
             data['word_to_idx'] = pickle.load(f)
@@ -44,11 +41,10 @@ def load_coco_data(data_path='./data', split='train'):
 def decode_captions(captions, idx_to_word):
     """
     Inputs:
-    - captions: numpy ndarray where the value(word index) is in the range [0, V) of shape (N, T)
+    - captions: numpy ndarray which contains word indices in the range [0, V) of shape (N, T)
     - idx_to_word: index to word mapping dictionary
-
     Returns:
-    - decoded: list of length N,
+    - decoded: decoded senteces; list of length N
     """
     N, T = captions.shape
     decoded = []
@@ -57,10 +53,11 @@ def decode_captions(captions, idx_to_word):
         words = []
         for t in range(T):
             word = idx_to_word[captions[i, t]]
+            if word == '<END>':
+                words.append('.')
+                break
             if word != '<NULL>':
                 words.append(word)
-            if word == '<END>':
-                break
         decoded.append(' '.join(words))
     return decoded
 
@@ -68,18 +65,12 @@ def sample_coco_minibatch(data, batch_size):
     """
     Inputs: 
     - data: dictionary with following keys:
-        - train_features: ndarray of shape (82783, 196, 512), not yet completed
-        - train_image_filename: list of length 82783
-        - train_captions: ndarray of shape (410000, 17)
-        - train_image_idxs: ndarray of shape (410000,)
-        - val_features (will be added)
-        - val_image_filename (will be added)
-        - val_captions (will be added)
-        - val_image_idxs (will be added)
-    - batch_size: batch size
-    - split: train or val
+        - captions: caption vectors of shape (410000, 17)
+        - image_idxs: indices mapping from captions to features of shape (410000,)
+        - features: feature vectors of shape (82783, 196, 512)
+        - file_names: image file names of (82783,)
+    - batch_size: mini-batch size
     """
-
     data_size = data['captions'].shape[0]
     mask = np.random.choice(data_size, batch_size)
     captions = data['captions'][mask]
