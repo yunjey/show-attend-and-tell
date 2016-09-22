@@ -31,8 +31,8 @@ If you want to get more train details or visualization results, see `Attention-4
 
 ###Test data
 
-#####Generated Caption: A plane flying over a body of water.
+#####(1) Generated Caption: A plane flying over a body of water.
 ![alt text](jpg/test.jpg "test image")
 
-#####Generated Caption: A zebra standing in the grass near a tree.
+#####(2) Generated Caption: A zebra standing in the grass near a tree.
 ![alt text](jpg/test2.jpg "test image")
