@@ -1,22 +1,21 @@
-import tensorflow as tf
-import numpy as np
-from layers import init_lstm, word_embedding_forward, encode_feature, attention_forward
-from layers import rnn_step_forward, gru_step_forward, lstm_step_forward
-from layers import affine_forward, affine_sigmoid_forward, affine_relu_forward, affine_tanh_forward, softmax_loss 
-from layers import temporal_affine_forward, temporal_affine_relu_forward, temporal_softmax_loss, temporal_affine_tanh_forward
-from utils import init_weight, init_bias
-
 """
-This is a implementation for attention based image captioning model.
+This is a model implementation for "Show, Attend and Tell: Neural Caption Generator With Visual Attention" (See http://arxiv.org/abs/1502.03044).
 There are some notations. 
 N is batch size.
-L is spacial size of feature vector (196)
-D is dimension of image feature vector (512)
-T is the number of time step which is equal to length of each caption.
-V is vocabulary size. 
-M is dimension of word vector which is embedding size.
-H is dimension of hidden state.
+L is spacial size of feature vector (196).
+D is dimension of image feature vector (512).
+T is the number of time step which is equal to caption's length - 1 (16).
+V is vocabulary size (about 10000). 
+M is dimension of word vector which is embedding size (default is 512).
+H is dimension of hidden state (default is 1024).
 """
+import tensorflow as tf
+import numpy as np
+from layers import init_lstm, word_embedding_forward, project_feature
+from layers import attention_forward, rnn_step_forward, lstm_step_forward
+from layers import affine_forward, affine_sigmoid_forward, softmax_loss 
+from utils import init_weight, init_bias
+
 
 class CaptionGenerator(object):
     """
@@ -24,10 +23,10 @@ class CaptionGenerator(object):
         - build_model: receives features and captions then build graph where root nodes are loss and logits.  
         - build_sampler: receives features and build graph where root nodes are captions and alpha weights.
     """
-    def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=128, 
-                    dim_hidden=128, n_time_step=None, cell_type='rnn', prev2out=True, ctx2out=True, alpha_c=0.0, selector=True):
+    def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=512, dim_hidden=1024, n_time_step=None, cell_type='rnn', 
+                prev2out=True, ctx2out=True, alpha_c=0.0, selector=True, use_dropout=True):
 
-        if cell_type not in {'rnn', 'gru', 'lstm'}:
+        if cell_type not in {'rnn', 'lstm'}:
             raise ValueError('Invalid cell_type "%s"' % cell_type)
 
         # Initialize some hyper parameters
@@ -38,16 +37,15 @@ class CaptionGenerator(object):
         self.ctx2out = ctx2out
         self.alpha_c = alpha_c
         self.selector = selector
+        self.use_dropout = use_dropout
         self.V = len(word_to_idx)
         self.L = dim_feature[0]
         self.D = dim_feature[1]
         self.M = dim_embed
         self.H = dim_hidden
         self.T = n_time_step
-
         self._null = word_to_idx['<NULL>']
         self._start = word_to_idx.get('<START>', None)
-        self._end = word_to_idx.get('<END>', None)
 
         with tf.device('/cpu:0'):
             # Initialize word embedding matrix
@@ -69,25 +67,19 @@ class CaptionGenerator(object):
         self.b_proj = init_bias('b_proj', [self.D])
         self.W_att = init_weight('W_att', [self.D, 1])
 
-        # Initialize weights for the RNN/GRU/LSTM
-        dim_mul = {'rnn': 1, 'gru': 2, 'lstm': 4}[cell_type]
+        # Initialize weights for the RNN/LSTM
+        dim_mul = {'rnn': 1, 'lstm': 4}[cell_type]
         dim_in = self.M + self.H + self.D
         self.Wx = init_weight('Wx', [self.M, self.H * dim_mul], dim_in=dim_in)    
-        self.Wh = init_weight('Wh', [self.H, self.H * dim_mul], dim_in=dim_in)
+        self.Wh = init_weight('Wx', [self.H, self.H * dim_mul], dim_in=dim_in)
         self.Wz = init_weight('Wz', [self.D, self.H * dim_mul], dim_in=dim_in)
         self.b = init_bias('b', [self.H * dim_mul])
-        # additional weights for GRU
-        if cell_type == 'gru':
-            self.Ux = init_weight('Ux', [self.M, self.H], dim_in=dim_in)    
-            self.Uh = init_weight('Uh', [self.H, self.H], dim_in=dim_in)
-            self.Uz = init_weight('Uz', [self.D, self.H], dim_in=dim_in)
-            self.b_u = init_bias('b_u', [self.H])
 
-        # additional wwights for some options
+        # additional weights for some options
         if self.ctx2out:
             self.W_ctx2out = init_weight('W_ctx2out', [self.D, self.M])
         if self.selector:
-            self.W_sel = init_weight('W_sel', [self.H, self.D])
+            self.W_sel = init_weight('W_sel', [self.H, self.D]) # this should be changed to 1 
             self.b_sel = init_bias('b_sel', [self.D])
         
         # Initialize weights for decode RNN/LSTM hidden state to vocab-size output vector
@@ -110,7 +102,7 @@ class CaptionGenerator(object):
         - loss: scalar giving loss
         """
 
-        # features and captions
+        # for simplification
         features = self.features
         captions = self.captions
 
@@ -119,40 +111,39 @@ class CaptionGenerator(object):
         captions_out = captions[:, 1:]  
         mask = tf.not_equal(captions_out, self._null)
         
-        
         # generate initial hidden state using CNN features 
         mean_features = tf.reduce_mean(features, 1)   # (N, D)
-        prev_h = init_lstm(mean_features, self.W1_init_h, self.b1_init_h, self.W2_init_h, self.b2_init_h)
-        prev_c = init_lstm(mean_features, self.W1_init_c, self.b1_init_c, self.W2_init_c, self.b2_init_c)
+        prev_h = init_lstm(mean_features, self.W1_init_h, self.b1_init_h, self.W2_init_h, self.b2_init_h, self.use_dropout)     # (N, H)
+        prev_c = init_lstm(mean_features, self.W1_init_c, self.b1_init_c, self.W2_init_c, self.b2_init_c, self.use_dropout)     # (N, H)
 
         # generate word vector
-        x = word_embedding_forward(captions_in, self.W_embed)   # (N, T, M)
+        x = word_embedding_forward(captions_in, self.W_embed)    # (N, T, M)
 
-        # encode features
-        features_projected = encode_feature(features, self.W_proj_x)
+        # project feature vector
+        features_projected = project_feature(features, self.W_proj_x)    # (N, L, D)
 
         loss = 0.0
         alpha_list = []
         for t in range(self.T):
             # generate context vector 
-            context, alpha = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)
+            context, alpha = attention_forward(features, features_projected, prev_h, self.W_proj_h, self.b_proj, self.W_att)     # (N, D), (N, L)
             alpha_list.append(alpha)
 
             if self.selector:
-                beta = affine_sigmoid_forward(prev_h, self.W_sel, self.b_sel)
-                context = beta * context
+                beta = affine_sigmoid_forward(prev_h, self.W_sel, self.b_sel)    # (N, 1)
+                context = beta * context    
 
             # rnn/lstm forward prop
             if self.cell_type == 'rnn':
-                next_h = rnn_step_forward(x[:,t,:], prev_h, context, self.Wx, self.Wh, self.Wz, self.b)
-                prev_h = next_h
-            elif self.cell_type == 'gru':
-                next_h = gru_step_forward(x[:,t,:], prev_h, context, self.Wx, self.Wh, self.Wz, self.b, self.Ux, self.Uh, self.Uz, self.b_u)
+                next_h = rnn_step_forward(x[:,t,:], prev_h, context, self.Wx, self.Wh, self.Wz, self.b)     # (N, H)
                 prev_h = next_h
             elif self.cell_type == 'lstm': 
-                next_h, next_c = lstm_step_forward(x[:,t,:], prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b) 
+                next_h, next_c = lstm_step_forward(x[:,t,:], prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b)     # (N, H), (N, H)
                 prev_h = next_h
                 prev_c = next_c
+
+            if self.use_dropout:
+                next_h = tf.nn.dropout(next_h, 0.5)
 
             # hidden-to-embed, embed-to-vocab
             logits = affine_forward(next_h, self.W1_decode, self.b1_decode)   # (N, M)
@@ -162,10 +153,18 @@ class CaptionGenerator(object):
                 logits += tf.matmul(context, self.W_ctx2out)
 
             logits_h = tf.nn.tanh(logits)
+            logits_h = tf.nn.dropout(logits_h, 0.5)
             logits_out = affine_forward(logits_h, self.W2_decode, self.b2_decode)   # (N, V)
        
             # compute softmax loss
             loss += softmax_loss(logits_out, captions_out[:, t], mask[:, t])
+
+        # doubly stochastic regularization
+        if self.alpha_c > 0:
+            alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     # (N, T, L)
+            alphas_all = tf.reduce_sum(alphas, 1)      # (N, L)
+            alpha_reg = self.alpha_c * tf.reduce_sum((16./196 - alphas_all) ** 2)     
+            loss += alpha_reg  
 
         return loss 
 
@@ -181,7 +180,7 @@ class CaptionGenerator(object):
         - sampled_captions: sampled word indices
         """
 
-        # features
+        # for simplification
         features = self.features
         
         # generate initial hidden state using CNN features 
@@ -189,15 +188,15 @@ class CaptionGenerator(object):
         prev_h = init_lstm(mean_features, self.W1_init_h, self.b1_init_h, self.W2_init_h, self.b2_init_h)
         prev_c = init_lstm(mean_features, self.W1_init_c, self.b1_init_c, self.W2_init_c, self.b2_init_c)
 
-        # encode features
-        features_projected = encode_feature(features, self.W_proj_x)
+        # project feature vector
+        features_projected = project_feature(features, self.W_proj_x)    # (N, L, D)
 
         sampled_word_list = []
         alpha_list = []
         for t in range(max_len):
             # embed the previous generated word
             if t == 0:
-                x = word_embedding_forward(tf.fill([tf.shape(features)[0]], self._start), self.W_embed)
+                x = word_embedding_forward(tf.fill([tf.shape(features)[0]], self._start), self.W_embed)    # (N, M)
             else:
                 x = word_embedding_forward(sampled_word, self.W_embed)    # (N, M)
 
@@ -212,9 +211,6 @@ class CaptionGenerator(object):
             # rnn/lstm forward prop
             if self.cell_type == 'rnn':
                 h = rnn_step_forward(x, prev_h, context, self.Wx, self.Wh, self.Wz, self.b)
-                prev_h = h
-            elif self.cell_type == 'gru':
-                h = gru_step_forward(x, prev_h, context, self.Wx, self.Wh, self.Wz, self.b, self.Ux, self.Uh, self.Uz, self.b_u)
                 prev_h = h
             elif self.cell_type == 'lstm': 
                 h, c = lstm_step_forward(x, prev_h, prev_c, context, self.Wx, self.Wh, self.Wz, self.b) 
@@ -231,10 +227,10 @@ class CaptionGenerator(object):
             logits_out = affine_forward(logits_h, self.W2_decode, self.b2_decode)      
 
             # sample word indices with logits
-            sampled_word = tf.argmax(logits_out, 1)        # (N, ) where value is in the range of [0, V) 
-            sampled_word_list.append(sampled_word)        # tensor flow doesn't provide item assignment 
+            sampled_word = tf.argmax(logits_out, 1)        # (N, ) where each element is word index in the range [0, V) 
+            sampled_word_list.append(sampled_word)        # tensorflow doesn't provide item assignment 
 
-        alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     #  (N, T, L)
-        sampled_captions = tf.transpose(tf.pack(sampled_word_list), (1,0))     # (N, max_len)
+        alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     # (N, T, L)
+        sampled_captions = tf.transpose(tf.pack(sampled_word_list), (1, 0))     # (N, max_len)
 
         return alphas, sampled_captions
