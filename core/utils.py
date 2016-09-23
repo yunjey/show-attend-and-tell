@@ -13,12 +13,20 @@ def init_weight(name, shape, stddev=1.0, dtype=tf.float32, dim_in=None):
 def init_bias(name, shape, dtype=tf.float32):
     return tf.Variable(tf.zeros(shape), name=name, dtype=dtype)
 
-def load_coco_data(data_path='./data', split='train'):
+def load_coco_data(data_path='./data', split='train', feature='conv5_3'):
     data_path = os.path.join(data_path, split)
     start_t = time.time()
     data = {}
     
-    data['features'] = hickle.load(os.path.join(data_path, '%s.features.hkl' %split))
+    if feature == 'conv5_3':
+        # tensorflow conv5_3 features
+        data['features'] = hickle.load(os.path.join(data_path, '%s.features.conv5_3.hkl' %split))
+    elif feature == 'conv5_4':
+        # tensorflow conv5_4 features
+        data['features'] = hickle.load(os.path.join(data_path, '%s.features.conv5_4.hkl' %split))
+    elif feature == 'sparse':
+         # theano conv5_3 sparse features
+        data['features'] = hickle.load(os.path.join(data_path, '%s.features.conv5_3.sparse.hkl' %split))
     with open(os.path.join(data_path, '%s.captions.pkl' %split), 'rb') as f:
         data['captions'] = pickle.load(f)
     with open(os.path.join(data_path, '%s.image.idxs.pkl' %split), 'rb') as f:
@@ -41,7 +49,7 @@ def load_coco_data(data_path='./data', split='train'):
 def decode_captions(captions, idx_to_word):
     """
     Inputs:
-    - captions: numpy ndarray which contains word indices in the range [0, V) of shape (N, T)
+    - captions: numpy ndarray which contains word indices in the range [0, V), of shape (N, T)
     - idx_to_word: index to word mapping dictionary
     Returns:
     - decoded: decoded senteces; list of length N
@@ -65,10 +73,10 @@ def sample_coco_minibatch(data, batch_size):
     """
     Inputs: 
     - data: dictionary with following keys:
-        - captions: caption vectors of shape (410000, 17)
-        - image_idxs: indices mapping from captions to features of shape (410000,)
-        - features: feature vectors of shape (82783, 196, 512)
-        - file_names: image file names of (82783,)
+        - captions: caption vectors of shape (25000, 17)
+        - image_idxs: indices mapping from captions to features of shape (25000,)
+        - features: feature vectors of shape (5000, 196, 512)
+        - file_names: image file names of (5000,)
     - batch_size: mini-batch size
     """
     data_size = data['captions'].shape[0]
