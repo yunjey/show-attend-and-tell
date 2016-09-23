@@ -2,7 +2,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import skimage.transform
 import numpy as np
-import math
+import time
 import os 
 import cPickle as pickle
 from scipy import ndimage
@@ -16,11 +16,15 @@ class CaptioningSolver(object):
         - train: given images and captions, trains model / prints loss
         - test: given images, generates(or samples) captions and visualizes attention weights.
         Example usage might look something like this:
-        data = load_coco_data()
-        model = CaptionGenerator(word_to_idx, batch_size= 100, dim_feature=[196, 512], dim_embed=128,
-                                   dim_hidden=128, n_time_step=16, cell_type='lstm', dtype=tf.float32)
-        solver = CaptioningSolver(model, data, n_epochs=10, batch_size=100, update_rule='adam', 
-                                                learning_rate=0.03, print_every=10, save_every=10)
+        data = load_coco_data(data_path='./data', split='train', feature='conv5_3')
+        word_to_idx = data['word_to_idx']
+        model = CaptionGenerator(word_to_idx, dim_feature=[196, 512], dim_embed=512,
+                                   dim_hidden=2048, n_time_step=16, cell_type='lstm', prev2out=True, 
+                                             ctx2out=True, alpha_c=1.0, selector=True, use_dropout=True)
+        solver = CaptioningSolver(model, data, n_epochs=30, batch_size=128, update_rule='adam',
+                                      learning_rate=0.001, print_every=3000, save_every=2, image_path='./image/train2014_resized',
+                                pretrained_model=None, model_path='./model/lstm', test_model='./model/lstm/model-20', test_batch_size=100,
+                                 candidate_caption_path='./data/', test_image_path='./image/val2014_resized')
         solver.train()
         solver.test()
     """
@@ -28,29 +32,34 @@ class CaptioningSolver(object):
         """
         Required Arguments:
         - model: a caption generator model with following functions:
-            - build_model: receives features and captions then build graph where root nodes are loss and logits.  
-            - build_sampler: receives features and build graph where root nodes are captions and alpha weights.
-        - data: dictionary with the following keys:
+            - build_model: receives features and captions then build graph where root node is loss.  
+            - build_sampler: receives features and build graph where root nodes are captions and alpha(attention) weights.
+        - data: training data; dictionary with the following keys:
             - features: feature vectors of shape (82783, 196, 512)
             - file_names: image file names of shape (82783, )
             - captions: captions of shape (400131, 17) 
             - image_idxs: indices for mapping caption to image of shape (400131, ) 
-            - annotations: pandas annotation data 
-            - word_to_idx: word to index dictionary
+            - word_to_idx: mapping dictionary from word to index 
         Optional Arguments:
         - n_epochs: the number of epochs to run for during training.
         - batch_size: mini batch size.
         - update_rule: a string giving the name of an update rule among the followings: 
+            - 'sgd'
+            - 'momentum'
             - 'adam'
-            - 'rmsprop'
             - 'adadelta'
             - 'adagrad'
+            - 'rmsprop' (don't use this. it will cause "not implement error".)
         - learning_rate: learning rate; default value is 0.03.
         - print_every: Integer; training losses will be printed every print_every iterations.
-        - save_every: Integer; model variables will be saved every save_every iterations.
-        - model_path: String; path for saving model
-        - test_model: String; model path for testing 
-        - image_path: String; path for images (for attention visualization)
+        - save_every: Integer; model variables will be saved every save_every epoch.
+        - image_path: String; train image path (for attention visualization)
+        - test_image_path: String; val/test image path (for attention visualization)
+        - pretrained_model: String; pretrained model path 
+        - model_path: String; model path for saving 
+        - test_model: String; model path for test 
+        - test_batch_size: Integer; batch size for test step
+        - candidate_caption_path: String; path for saving sampled captions for given images 
         """
         self.model = model
         self.data = data
@@ -60,13 +69,13 @@ class CaptioningSolver(object):
         self.learning_rate = kwargs.pop('learning_rate', 0.03)
         self.print_every = kwargs.pop('print_every', 10)
         self.save_every = kwargs.pop('save_every', 100)
+        self.image_path = kwargs.pop('image_path', './data/train2014_resized/')
+        self.test_image_path = kwargs.pop('test_image_path', './data/val2014_resized')
         self.pretrained_model = kwargs.pop('pretrained_model', None)
         self.model_path = kwargs.pop('model_path', './model/')
         self.test_model = kwargs.pop('test_model', './model/lstm/model-1')
         self.test_batch_size = kwargs.pop('test_batch_size', 100)
         self.candidate_caption_path = kwargs.pop('candidate_caption_path', './data/')
-        self.image_path = kwargs.pop('image_path', './data/train2014_resized/')
-        self.test_image_path = kwargs.pop('test_image_path', './data/val2014_resized')
 
         # Book-keeping variables 
         self.best_model = None
@@ -86,14 +95,17 @@ class CaptioningSolver(object):
             self.optimizer = tf.train.AdagradOptimizer
         elif self.update_rule == 'adadelta':
             self.optimizer = tf.train.AdadeltaOptimizer
-        else:
-            self.optimizer = tf.train.RMSPropOptimizer    # don't use. cause not implement error.
+        elif self.update_rule == 'rmsprop':
+            self.optimizer = tf.train.RMSPropOptimizer    # don't use this. it will cause "not implement error".
 
 
 
     def train(self):
         """
-        Train model and print out some useful information(loss, generated captions) for debugging.  
+        For given feature vectors and ground truth captions, solver trains model using gpu. 
+        solver also prints out some useful information such as loss and sampled caption.
+        For each epoch, model compares previous loss and current loss. 
+        If current loss is bigger than previous, then learning rate is decreased to half.
         """
         n_examples = self.data['captions'].shape[0]
         n_iters_per_epoch = int(np.ceil(float(n_examples) / self.batch_size))
@@ -104,7 +116,6 @@ class CaptioningSolver(object):
         image_idxs = self.data['image_idxs']
 
         # random shuffle caption data
-        np.random.seed(1234)
         rand_idxs = np.random.permutation(n_examples)
         captions = captions[rand_idxs]
         image_idxs = image_idxs[rand_idxs]
@@ -122,18 +133,19 @@ class CaptioningSolver(object):
         print "Batch size: %d" %self.batch_size
         print "Iterations per epoch: %d" %n_iters_per_epoch
         
-        config = tf.ConfigProto(allow_soft_placement = True, log_device_placement=True)
-        #config.gpu_options.per_process_gpu_memory_fraction=0.6
-        config.gpu_options.allow_growth = True
+        config = tf.ConfigProto(allow_soft_placement = True)
+        config.gpu_options.per_process_gpu_memory_fraction=0.65
+        #config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
             tf.initialize_all_variables().run()
-            saver = tf.train.Saver(max_to_keep=10)
+            saver = tf.train.Saver(max_to_keep=40)
             if self.pretrained_model is not None:
                 print "Start training with pretrained Model.."
                 saver.restore(sess, self.pretrained_model)
 
             prev_loss = 1000000000
             curr_loss = 0
+            start_t = time.time()
             for e in range(self.n_epochs):
                 for i in range(n_iters_per_epoch):
                     # get batch data (lengths of all mini-batch captions are same)
@@ -183,9 +195,10 @@ class CaptioningSolver(object):
 
 
                 print "Previous epoch loss: ", prev_loss
-                print "Current epoch loss", curr_loss
+                print "Current epoch loss: ", curr_loss
+                print "Elapsed time: ", time.time() - start_t
                 if prev_loss < curr_loss:
-                    #saver.restore(sess, os.path.join(self.model_path, self.best_model))
+                    saver.restore(sess, os.path.join(self.model_path, self.best_model))
                     self.learning_rate /= 2
                     print "Reduce learning rate to %f..!" %self.learning_rate
                 else:
@@ -221,6 +234,7 @@ class CaptioningSolver(object):
         alphas, sampled_captions = self.model.build_sampler(max_len)    # (N, max_len, L), (N, max_len)
         
         config = tf.ConfigProto(allow_soft_placement=True)
+        config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
             # restore trained model
             saver = tf.train.Saver(max_to_keep=10)
