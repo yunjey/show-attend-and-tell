@@ -1,17 +1,19 @@
 # Show, Attend and Tell 
 This is a tensorflow implementation for [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention](http://arxiv.org/abs/1502.03044)
 
+<br/>
+
 ## Reference
 Author's source code: https://github.com/kelvinxu/arctic-captions
 
 Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
 
-
+<br/>
 ## Result
 Below are visualizations of the (soft) attention weights for each generated word.
 
-If you want to get more train details or visualization results, see `Attention-400000-lstm.ipynb`. 
-
+If you want to get more training details or visualization results, see `evaluate_model.ipynb`. 
+<br/>
 ###Training Data
 
 #####(1) Generated Caption: A plane flying in the sky with a landing gear down.
