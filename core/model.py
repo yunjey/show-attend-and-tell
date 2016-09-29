@@ -75,12 +75,14 @@ class CaptionGenerator(object):
         self.Wz = init_weight('Wz', [self.D, self.H * dim_mul], dim_in=dim_in)
         self.b = init_bias('b', [self.H * dim_mul])
 
-        # additional weights for some options
+        # context-to-out
         if self.ctx2out:
             self.W_ctx2out = init_weight('W_ctx2out', [self.D, self.M])
+            
+        # gating scalar beta
         if self.selector:
-            self.W_sel = init_weight('W_sel', [self.H, self.D]) # this should be changed to 1 
-            self.b_sel = init_bias('b_sel', [self.D])
+            self.W_sel = init_weight('W_sel', [self.H, 1]) 
+            self.b_sel = init_bias('b_sel', [1])
         
         # Initialize weights for decode RNN/LSTM hidden state to vocab-size output vector
         self.W1_decode =  init_weight('W1_decode', [self.H, self.M])
