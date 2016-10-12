@@ -7,7 +7,7 @@ import os
 import cPickle as pickle
 from scipy import ndimage
 from utils import decode_captions, sample_coco_minibatch
-from homogeneous import Homogeneous_Data
+from bleu import evaluate
 
 
 class CaptioningSolver(object):
@@ -28,7 +28,7 @@ class CaptioningSolver(object):
         solver.train()
         solver.test()
     """
-    def __init__(self, model, data, **kwargs):
+    def __init__(self, model, data, val_data, **kwargs):
         """
         Required Arguments:
         - model: a caption generator model with following functions:
@@ -40,6 +40,7 @@ class CaptioningSolver(object):
             - captions: captions of shape (400131, 17) 
             - image_idxs: indices for mapping caption to image of shape (400131, ) 
             - word_to_idx: mapping dictionary from word to index 
+        - val_data: validation data; for print out BLEU scores for each epoch.
         Optional Arguments:
         - n_epochs: the number of epochs to run for during training.
         - batch_size: mini batch size.
@@ -63,6 +64,7 @@ class CaptioningSolver(object):
         """
         self.model = model
         self.data = data
+        self.val_data = val_data
         self.n_epochs = kwargs.pop('n_epochs', 10)
         self.batch_size = kwargs.pop('batch_size', 100)
         self.update_rule = kwargs.pop('update_rule', 'adam')
@@ -76,6 +78,7 @@ class CaptioningSolver(object):
         self.test_model = kwargs.pop('test_model', './model/lstm/model-1')
         self.test_batch_size = kwargs.pop('test_batch_size', 100)
         self.candidate_caption_path = kwargs.pop('candidate_caption_path', './data/')
+        self.print_bleu = kwargs.pop('print_bleu', True)
 
         # Book-keeping variables 
         self.best_model = None
@@ -110,22 +113,18 @@ class CaptioningSolver(object):
         n_examples = self.data['captions'].shape[0]
         n_iters_per_epoch = int(np.ceil(float(n_examples) / self.batch_size))
 
-        # get data
+        # training dataset
         features = self.data['features']
         captions = self.data['captions']
-        image_idxs = self.data['image_idxs']
-
-        # random shuffle caption data
-        rand_idxs = np.random.permutation(n_examples)
-        captions = captions[rand_idxs]
-        image_idxs = image_idxs[rand_idxs]
-
-        # initialize class for generating same length of captions
-        train_iter = Homogeneous_Data(captions, batch_size=self.batch_size)
+        
+        # validation dataset
+        val_features = self.val_data['features']
+        n_iters_val = int(np.ceil(float(val_features.shape[0]) / self.test_batch_size))
 
         # build graph for training
         loss = self.model.build_model()
-        _, generated_captions = self.model.build_sampler()
+        max_len = 20
+        _, generated_captions = self.model.build_sampler(max_len=max_len)
         optimizer = self.optimizer(self.learning_rate).minimize(loss)
 
         print "The number of epoch: %d" %self.n_epochs
@@ -134,7 +133,7 @@ class CaptioningSolver(object):
         print "Iterations per epoch: %d" %n_iters_per_epoch
         
         config = tf.ConfigProto(allow_soft_placement = True)
-        config.gpu_options.per_process_gpu_memory_fraction=0.65
+        config.gpu_options.per_process_gpu_memory_fraction=0.9
         #config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
             tf.initialize_all_variables().run()
@@ -147,12 +146,14 @@ class CaptioningSolver(object):
             curr_loss = 0
             start_t = time.time()
             for e in range(self.n_epochs):
+                # random shuffle caption data
+                rand_idxs = np.random.permutation(n_examples)
+                captions = captions[rand_idxs]
+                features = features[rand_idxs]
                 for i in range(n_iters_per_epoch):
                     # get batch data (lengths of all mini-batch captions are same)
-                    same_caption_idxs = train_iter.get_next()
-                    captions_batch = captions[same_caption_idxs]
-                    image_idxs_batch = image_idxs[same_caption_idxs]
-                    features_batch = features[image_idxs_batch]
+                    captions_batch = captions[i*self.batch_size:(i+1)*self.batch_size]
+                    features_batch = features[i*self.batch_size:(i+1)*self.batch_size]
 
                     # print initial loss
                     if e == 0 and i == 0:
@@ -177,28 +178,59 @@ class CaptioningSolver(object):
                         print "\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*"
                         print "Train loss at epoch %d & iteration %d (mini-batch): %.5f" %(e+1, i+1, l)
                         # print out ground truth
-                        for j in range(1):
-                            ground_truths = captions[image_idxs == image_idxs_batch[j]]
-                            decoded = decode_captions(ground_truths, self.model.idx_to_word)
-                            for i, gt in enumerate(decoded):
-                                print "Ground truth %d: %s" %(i+1, gt)        
+                        for j in range(2):
+                            ground_truth = captions_batch[j]
+                            decoded = decode_captions(ground_truth, self.model.idx_to_word)
+                            print "Ground truth %d: %s" %(j+1, decoded[0])        
                         # print out generated captions                       
-                        decoded = decode_captions(gen_caps, self.model.idx_to_word)
                         gen_caps = sess.run(generated_captions, feed_dict)
                         decoded = decode_captions(gen_caps, self.model.idx_to_word)
-                        for j in range(1):
+                        for j in range(2):
                             print "Generated caption: %s" %decoded[j]
                         print "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*\n"
                         # save loss history
                         l = sess.run(loss, feed_dict)
                         self.loss_history.append(l)
-
-
+    
                 print "Previous epoch loss: ", prev_loss
                 print "Current epoch loss: ", curr_loss
                 print "Elapsed time: ", time.time() - start_t
+                
+                # print out BLEU scores
+                if self.print_bleu:
+                    all_gen_cap = np.ndarray((val_features.shape[0], max_len))
+                    for i in range(n_iters_val):
+                        features_batch = val_features[i * self.test_batch_size:(i + 1) * self.test_batch_size]
+                        feed_dict = {self.model.features: features_batch}
+                        gen_cap = sess.run(generated_captions, feed_dict=feed_dict)  # (N, max_len)
+                        all_gen_cap[i * self.test_batch_size:(i + 1) * self.test_batch_size] = gen_cap
+
+                    # decode all sampled captions
+                    all_decoded = decode_captions(all_gen_cap, self.model.idx_to_word)
+                    with open(os.path.join(self.candidate_caption_path, "val/val.candidate.captions.pkl"), 'wb') as f:
+                        pickle.dump(all_decoded, f, pickle.HIGHEST_PROTOCOL)
+                        print "saved val.candidate.captions.pkl.."
+                    
+                    # get bleu scores
+                    final_scores = evaluate(data_path='./data', split='val', get_scores=True)
+                    
+                    # file write
+                    if e == 0:
+                        file_mode = 'w'
+                    else:
+                        file_mode = 'a'
+                    with open(os.path.join(self.model_path, 'val.bleu.scores.txt'), file_mode) as f:
+                        f.write('Epoch %d\n' %(e+1))
+                        f.write('Bleu_1: %f\n' %final_scores['Bleu_1'])
+                        f.write('Bleu_2: %f\n' %final_scores['Bleu_2'])
+                        f.write('Bleu_3: %f\n' %final_scores['Bleu_3'])  
+                        f.write('Bleu_4: %f\n' %final_scores['Bleu_4']) 
+                        f.write('METEOR: %f\n' %final_scores['METEOR'])  
+                        f.write('ROUGE_L: %f\n' %final_scores['ROUGE_L'])  
+                        f.write('CIDEr: %f\n\n' %final_scores['CIDEr'])
+                
                 if prev_loss < curr_loss:
-                    saver.restore(sess, os.path.join(self.model_path, self.best_model))
+                    #saver.restore(sess, os.path.join(self.model_path, self.best_model))
                     self.learning_rate /= 2
                     print "Reduce learning rate to %f..!" %self.learning_rate
                 else:
@@ -216,7 +248,6 @@ class CaptioningSolver(object):
         '''
         Sample captions and visualize attention weights for image data
         Save sampled captions in pickle file
-
         Inputs:
         - data: dictionary with the following keys:
             - features: feature vectors of shape (5000, 196, 512)
@@ -290,8 +321,3 @@ class CaptioningSolver(object):
                 with open(os.path.join(self.candidate_caption_path, "%s/%s.candidate.captions.pkl" %(split,split)), 'wb') as f:
                     pickle.dump(all_decoded, f, pickle.HIGHEST_PROTOCOL)
                     print "saved %s.candidate.captions.pkl.." %split
-
-
-
-
-  
