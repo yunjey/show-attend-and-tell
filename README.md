@@ -10,10 +10,8 @@ Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_a
 
 
 ## Requirements
-* Python 2.7
-* TensorFlow
-* cPickle
-* hickle
+* Python 2.7 or Python 3.3 +
+* TensorFlow 0.9 +
 
 ## Usage 
 
@@ -27,8 +25,8 @@ Download VGGNet imagenet-vgg-verydeep-19.mat and save into prep directory
     
 To generate data for training and testing, run codes below:
 
-    $ python prepare_data.py
-    $ python prepare_features.py imagenet-vgg-verydeep-19.mat conv5_3 100
+    $ python prep/prepare_data.py
+    $ python prep/prepare_features.py prep/imagenet-vgg-verydeep-19.mat conv5_3 100
 
 <br/>
 ## Result
