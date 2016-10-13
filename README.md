@@ -1,12 +1,26 @@
 # Show, Attend and Tell 
-This is a tensorflow implementation for [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention](http://arxiv.org/abs/1502.03044)
+This is a TensorFlow implementation for [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention](http://arxiv.org/abs/1502.03044)
 
 <br/>
+## Requirements
+* Python 2.7
+* TensorFlow
+* cPickle
+* hickle
 
-## Reference
-Author's source code: https://github.com/kelvinxu/arctic-captions
+## Usage (not yet complete)
 
-Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
+    $ git clone https://github.com/yunjey/show-attend-and-tell.git 
+    
+Download MSCOCO 2014 training images and 2014 val images (you should also resize them to 224x224)
+
+    http://mscoco.org/dataset/#download 
+   
+To generate caption data for training and testing, run code below:
+
+   
+    $ python data_generation.py
+
 
 <br/>
 ## Result
@@ -37,3 +51,8 @@ If you want to get more training details or visualization results, see `evaluate
 
 #####(2) Generated Caption: A zebra standing in the grass near a tree.
 ![alt text](jpg/test2.jpg "test image")
+
+## References
+Author's source code: https://github.com/kelvinxu/arctic-captions
+
+Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
