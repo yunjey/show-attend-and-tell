@@ -6,6 +6,9 @@
 *.npy
 *.hkl
 *.pkl
-train2014_resized/*
+train2014/*
+val2014/*
 model/*
 __init__.py
+*.mat
+
