@@ -8,7 +8,7 @@ This is a TensorFlow implementation for [Show, Attend and Tell: Neural Image Cap
 * cPickle
 * hickle
 
-## Usage (not yet complete)
+## Usage 
 
     $ git clone https://github.com/yunjey/show-attend-and-tell.git 
     
