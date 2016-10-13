@@ -16,11 +16,12 @@ Download MSCOCO 2014 training images and 2014 val images (you should also resize
 
     http://mscoco.org/dataset/#download 
    
-To generate caption data for training and testing, run code below:
+Download VGGNet imagenet-vgg-verydeep-19.mat and save into prep directory
+    
+To generate data for training and testing, run codes below:
 
-   
-    $ python data_generation.py
-
+    $ python prepare_data.py
+    $ python prepare_features.py imagenet-vgg-verydeep-19.mat conv5_3 100
 
 <br/>
 ## Result
