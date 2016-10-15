@@ -29,7 +29,11 @@ Download VGGNet imagenet-vgg-verydeep-19.mat and save into prep directory
 To generate data for training and testing, run codes below:
 
     $ python prep/prepare_data.py
-    $ python prep/prepare_features.py prep/imagenet-vgg-verydeep-19.mat conv5_3 100
+    $ python prep/prepare_features.py prep/imagenet-vgg-verydeep-19.mat conv5_3 100 True
+
+Train
+
+    $ python train.py 
 
 <br/>
 
