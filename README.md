@@ -10,35 +10,9 @@ Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_a
 
 <br/>
 
-## Requirements
-* Python 2.7 or Python 3.3 +
-* TensorFlow 0.9 +
-
-<br/>
-
-## Usage 
-
-    $ git clone https://github.com/yunjey/show-attend-and-tell.git 
-    
-Download MSCOCO 2014 training images and 2014 val images (you should also resize them to 224x224)
-
-    http://mscoco.org/dataset/#download 
-   
-Download VGGNet imagenet-vgg-verydeep-19.mat and save into prep directory
-    
-To generate data for training and testing, run codes below:
-
-    $ python prep/prepare_data.py
-    $ python prep/prepare_features.py prep/imagenet-vgg-verydeep-19.mat conv5_3 100 True
-
-Train
-
-    $ python train.py 
-
-<br/>
 
 ## Result
-Below are visualizations of the (soft) attention weights for each generated word.
+Below is a visualization of the (soft) attention weights for each generated word.
 
 If you want to get more training details or visualization results, see `evaluate_model.ipynb`. 
 <br/>
