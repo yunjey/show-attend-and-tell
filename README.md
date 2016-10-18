@@ -10,8 +10,14 @@ Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_a
 
 <br/>
 
+## Usage
+Optimizing the code is on progress to provide better performance and readability.
 
-## Result
+Usages for data and model will be updated soon.
+
+<br/>
+
+## Results
 Below is a visualization of the (soft) attention weights for each generated word.
 
 If you want to get more training details or visualization results, see `evaluate_model.ipynb`. 
