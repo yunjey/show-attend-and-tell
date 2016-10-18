@@ -4,9 +4,8 @@ This is a tensorflow implementation for [Show, Attend and Tell: Neural Image Cap
 <br/>
 
 ## References
-Author's source code: https://github.com/kelvinxu/arctic-captions
+Author's theano source code: https://github.com/kelvinxu/arctic-captions
 
-Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
 
 <br/>
 
