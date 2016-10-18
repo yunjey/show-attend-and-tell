@@ -13,11 +13,13 @@ Usages for data and model will be updated soon.
 
 <br/>
 
-## Results
-Below is a visualization of the (soft) attention weights for each generated word.
+## Result
+Below are visualizations for the attention model.
 
-If you want to get more training details or visualization results, see `evaluate_model.ipynb`. 
+If you want to get more details, see `evaluate_model.ipynb`. 
+
 <br/>
+
 ####Training data
 
 #####(1) Generated caption: A plane flying in the sky with a landing gear down.
