@@ -1,10 +1,7 @@
 # Show, Attend and Tell 
-This is a tensorflow implementation for [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention](http://arxiv.org/abs/1502.03044)
+This is a TensorFlow implementation for [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention](http://arxiv.org/abs/1502.03044)
 
-<br/>
-
-## References
-Author's theano source code: https://github.com/kelvinxu/arctic-captions
+Referenced author's theano source code: https://github.com/kelvinxu/arctic-captions
 
 
 <br/>
