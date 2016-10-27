@@ -6,278 +6,240 @@ import time
 import os 
 import cPickle as pickle
 from scipy import ndimage
-from utils import decode_captions, sample_coco_minibatch, write_bleu
+from utils import *
 from bleu import evaluate
 
 
 class CaptioningSolver(object):
+  def __init__(self, model, data, val_data, **kwargs):
     """
-    CaptioningSolver produces functions:
-        - train: given images and captions, trains model / prints loss
-        - test: given images, generates(or samples) captions and visualizes attention weights.
-        Example usage might look something like this:
-        data = load_coco_data(data_path='./data', split='train', feature='conv5_3')
-        word_to_idx = data['word_to_idx']
-        model = CaptionGenerator(word_to_idx, dim_feature=[196, 512], dim_embed=512,
-                                   dim_hidden=2048, n_time_step=16, cell_type='lstm', prev2out=True, 
-                                             ctx2out=True, alpha_c=1.0, selector=True, use_dropout=True)
-        solver = CaptioningSolver(model, data, n_epochs=30, batch_size=128, update_rule='adam',
-                                      learning_rate=0.001, print_every=3000, save_every=2, image_path='./image/train2014_resized',
-                                pretrained_model=None, model_path='./model/lstm', test_model='./model/lstm/model-20', test_batch_size=100,
-                                 candidate_caption_path='./data/', test_image_path='./image/val2014_resized')
-        solver.train()
-        solver.test()
+    Required Arguments:
+    - model: Show Attend and Tell caption generating model
+    - data: Training data; dictionary with the following keys:
+        - features: Feature vectors of shape (82783, 196, 512)
+        - file_names: Image file names of shape (82783, )
+        - captions: Captions of shape (400131, 17) 
+        - image_idxs: Indices for mapping caption to image of shape (400131, ) 
+        - word_to_idx: Mapping dictionary from word to index 
+    - val_data: validation data; for print out BLEU scores for each epoch.
+    Optional Arguments:
+    - n_epochs: The number of epochs to run for training.
+    - batch_size: Mini batch size.
+    - update_rule: A string giving the name of an update rule among the followings: 
+        - 'sgd'
+        - 'momentum'
+        - 'adam'
+        - 'adadelta'
+        - 'adagrad'
+        - 'rmsprop' 
+    - learning_rate: Learning rate; default value is 0.03.
+    - print_every: Integer; training losses will be printed every print_every iterations.
+    - save_every: Integer; model variables will be saved every save_every epoch.
+    - image_path: String; path for images (for attention visualization)
+    - pretrained_model: String; pretrained model path 
+    - model_path: String; model path for saving 
+    - test_model: String; model path for test 
     """
-    def __init__(self, model, data, val_data, **kwargs):
-        """
-        Required Arguments:
-        - model: a caption generator model with following functions:
-            - build_model: receives features and captions then build graph where root node is loss.  
-            - build_sampler: receives features and build graph where root nodes are captions and alpha(attention) weights.
-        - data: training data; dictionary with the following keys:
-            - features: feature vectors of shape (82783, 196, 512)
-            - file_names: image file names of shape (82783, )
-            - captions: captions of shape (400131, 17) 
-            - image_idxs: indices for mapping caption to image of shape (400131, ) 
-            - word_to_idx: mapping dictionary from word to index 
-        - val_data: validation data; for print out BLEU scores for each epoch.
-        Optional Arguments:
-        - n_epochs: the number of epochs to run for training.
-        - batch_size: mini batch size.
-        - update_rule: a string giving the name of an update rule among the followings: 
-            - 'sgd'
-            - 'momentum'
-            - 'adam'
-            - 'adadelta'
-            - 'adagrad'
-            - 'rmsprop' (don't use this. it will cause "not implement error".)
-        - learning_rate: learning rate; default value is 0.03.
-        - print_every: Integer; training losses will be printed every print_every iterations.
-        - save_every: Integer; model variables will be saved every save_every epoch.
-        - image_path: String; train image path (for attention visualization)
-        - test_image_path: String; val/test image path (for attention visualization)
-        - pretrained_model: String; pretrained model path 
-        - model_path: String; model path for saving 
-        - test_model: String; model path for test 
-        - test_batch_size: Integer; batch size for test step
-        - candidate_caption_path: String; path for saving sampled captions for given images 
-        """
-        self.model = model
-        self.data = data
-        self.val_data = val_data
-        self.n_epochs = kwargs.pop('n_epochs', 10)
-        self.batch_size = kwargs.pop('batch_size', 100)
-        self.update_rule = kwargs.pop('update_rule', 'adam')
-        self.learning_rate = kwargs.pop('learning_rate', 0.03)
-        self.print_every = kwargs.pop('print_every', 10)
-        self.save_every = kwargs.pop('save_every', 100)
-        self.image_path = kwargs.pop('image_path', './data/train2014_resized/')
-        self.test_image_path = kwargs.pop('test_image_path', './data/val2014_resized')
-        self.pretrained_model = kwargs.pop('pretrained_model', None)
-        self.model_path = kwargs.pop('model_path', './model/')
-        self.test_model = kwargs.pop('test_model', './model/lstm/model-1')
-        self.test_batch_size = kwargs.pop('test_batch_size', 100)
-        self.candidate_caption_path = kwargs.pop('candidate_caption_path', './data/')
-        self.print_bleu = kwargs.pop('print_bleu', False)
-        self.log_path = kwargs.pop('log_path', './log/')
 
-        # Set optimizer by update rule
-        if self.update_rule == 'sgd':
-            self.optimizer = tf.train.GradientDescentOptimizer
-        elif self.update_rule == 'momentum':
-            self.optimizer = tf.train.MomentumOptimizer
-        elif self.update_rule == 'adam':
-            self.optimizer = tf.train.AdamOptimizer
-        elif self.update_rule == 'adagrad':
-            self.optimizer = tf.train.AdagradOptimizer
-        elif self.update_rule == 'adadelta':
-            self.optimizer = tf.train.AdadeltaOptimizer
-        elif self.update_rule == 'rmsprop':
-            self.optimizer = tf.train.RMSPropOptimizer   
+    self.model = model
+    self.data = data
+    self.val_data = val_data
+    self.n_epochs = kwargs.pop('n_epochs', 10)
+    self.batch_size = kwargs.pop('batch_size', 100)
+    self.update_rule = kwargs.pop('update_rule', 'adam')
+    self.learning_rate = kwargs.pop('learning_rate', 0.01)
+    self.print_bleu = kwargs.pop('print_bleu', False)
+    self.print_every = kwargs.pop('print_every', 100)
+    self.save_every = kwargs.pop('save_every', 1)
+    self.image_path = kwargs.pop('image_path', './data/image')
+    self.log_path = kwargs.pop('log_path', './log/')
+    self.model_path = kwargs.pop('model_path', './model/')
+    self.pretrained_model = kwargs.pop('pretrained_model', None)
+    self.test_model = kwargs.pop('test_model', './model/lstm/model-1')
 
+    # Set optimizer by update rule
+    if self.update_rule == 'sgd':
+      self.optimizer = tf.train.GradientDescentOptimizer
+    elif self.update_rule == 'momentum':
+      self.optimizer = tf.train.MomentumOptimizer
+    elif self.update_rule == 'adam':
+      self.optimizer = tf.train.AdamOptimizer
+    elif self.update_rule == 'adagrad':
+      self.optimizer = tf.train.AdagradOptimizer
+    elif self.update_rule == 'adadelta':
+      self.optimizer = tf.train.AdadeltaOptimizer
+    elif self.update_rule == 'rmsprop':
+      self.optimizer = tf.train.RMSPropOptimizer   
 
-        if not os.path.exists(self.model_path):
-        	os.makedirs(self.model_path)
-        if not os.path.exists(self.log_path):
-        	os.makedirs(self.log_path)
+    if not os.path.exists(self.model_path):
+      os.makedirs(self.model_path)
+    if not os.path.exists(self.log_path):
+      os.makedirs(self.log_path)
 
+  def train(self):
+    # Train/Val dataset
+    n_examples = self.data['captions'].shape[0]
+    n_iters_per_epoch = int(np.ceil(float(n_examples)/self.batch_size))
+    features = self.data['features']
+    captions = self.data['captions']
+    image_idxs = self.data['image_idxs']
+    val_features = self.val_data['features']
+    n_iters_val = int(np.ceil(float(val_features.shape[0])/self.batch_size))
 
-    def train(self):
-        """
-        For given image features, solver trains model to generate captions similar to ground truths. 
-        Solver also prints out some useful information such as loss and generated captions.
-        """
-        n_examples = self.data['captions'].shape[0]
-        n_iters_per_epoch = int(np.ceil(float(n_examples)/self.batch_size))
+    # Build graphs for training model and sampling captions
+    loss = self.model.build_model()
+    tf.get_variable_scope().reuse_variables()
+    _, generated_captions = self.model.build_sampler(max_len=20)
 
-        # Training dataset
-        features = self.data['features']
-        captions = self.data['captions']
-        image_idxs = self.data['image_idxs']
-        
-        # Validation dataset
-        val_features = self.val_data['features']
-        n_iters_val = int(np.ceil(float(val_features.shape[0])/self.test_batch_size))
+    # Train op
+    with tf.name_scope('optimizer'):
+      optimizer = self.optimizer(learning_rate=self.learning_rate)
+      grads = tf.gradients(loss, tf.trainable_variables())
+      grads_and_vars = list(zip(grads, tf.trainable_variables()))
+      train_op = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
+       
+    # Summary op
+    tf.scalar_summary('batch_loss', loss)
 
-        # Build graphs for training
-        loss = self.model.build_model()
-        tf.get_variable_scope().reuse_variables()
-        _, generated_captions = self.model.build_sampler(max_len=20)
-        optimizer = self.optimizer(self.learning_rate).minimize(loss)
+    for var in tf.trainable_variables():
+      tf.histogram_summary(var.op.name, var)
 
-        print "The number of epoch: %d" %self.n_epochs
-        print "Data size: %d" %n_examples
-        print "Batch size: %d" %self.batch_size
-        print "Iterations per epoch: %d" %n_iters_per_epoch
-        
-        config = tf.ConfigProto(allow_soft_placement = True)
-        #config.gpu_options.per_process_gpu_memory_fraction=0.9
-        config.gpu_options.allow_growth = True
-        with tf.Session(config=config) as sess:
-            tf.initialize_all_variables().run()
-            saver = tf.train.Saver(max_to_keep=40)
-            if self.pretrained_model is not None:
-                print "Start training with pretrained Model.."
-                saver.restore(sess, self.pretrained_model)
+    for grad, var in grads_and_vars:
+      tf.histogram_summary(var.op.name + '/gradient', grad)
 
-            prev_loss = -1
-            curr_loss = 0
-            start_t = time.time()
-            for e in range(self.n_epochs):
-                # Random shuffle caption data
-                rand_idxs = np.random.permutation(n_examples)
-                captions = captions[rand_idxs]
-                image_idxs = image_idxs[rand_idxs]
-                for i in range(n_iters_per_epoch):
-                    captions_batch = captions[i*self.batch_size:(i+1)*self.batch_size]
-                    image_idxs_batch = image_idxs[i*self.batch_size:(i+1)*self.batch_size]
-                    features_batch = features[image_idxs_batch]
+    summary_op = tf.merge_all_summaries() 
 
-                    # Optimize
-                    feed_dict = { self.model.features: features_batch, self.model.captions: captions_batch }
-                    _, l = sess.run([optimizer, loss], feed_dict)
-                    curr_loss += l
-
-                    if (i+1) % self.print_every == 0:
-                        # Print out mini-batch loss and ground truth captions
-                        print "\nTrain loss at epoch %d & iteration %d (mini-batch): %.5f" %(e+1, i+1, l)
-                        ground_truths = captions[image_idxs == image_idxs_batch[0]]
-                        decoded = decode_captions(ground_truths, self.model.idx_to_word)
-                        for j, gt in enumerate(decoded):
-                            print "Ground truth %d: %s" %(j+1, gt)
-
-                        # Print out model-generated captions                       
-                        gen_caps = sess.run(generated_captions, feed_dict)
-                        decoded = decode_captions(gen_caps, self.model.idx_to_word)
-                        print "Generated caption: %s\n" %decoded[0]
-
-                print "Previous epoch loss: ", prev_loss
-                print "Current epoch loss: ", curr_loss
-                print "Elapsed time: ", time.time() - start_t
-                
-                # Print out BLEU scores for validation dataset
-                if self.print_bleu:
-                    all_gen_cap = np.ndarray((val_features.shape[0], max_len))
-                    for i in range(n_iters_val):
-                        features_batch = val_features[i * self.test_batch_size:(i + 1) * self.test_batch_size]
-                        feed_dict = {self.model.features: features_batch}
-                        gen_cap = sess.run(generated_captions, feed_dict=feed_dict)  
-                        all_gen_cap[i * self.test_batch_size:(i + 1) * self.test_batch_size] = gen_cap
-
-                    # Decode all sampled captions
-                    all_decoded = decode_captions(all_gen_cap, self.model.idx_to_word)
-                    with open(os.path.join(self.candidate_caption_path, "val/val.candidate.captions.pkl"), 'wb') as f:
-                        pickle.dump(all_decoded, f, pickle.HIGHEST_PROTOCOL)
-                        print "saved val.candidate.captions.pkl.."
-                    
-                    # Get BLEU scores and file write
-                    scores = evaluate(data_path='./data', split='val', get_scores=True)
-                    write_bleu(scores=scores, path=self.model_path, epoch=e)
+    print "The number of epoch: %d" %self.n_epochs
+    print "Data size: %d" %n_examples
+    print "Batch size: %d" %self.batch_size
+    print "Iterations per epoch: %d" %n_iters_per_epoch
     
-                if (e+1) % self.save_every == 0:
-                    saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
-                    print "model-%s saved." %(e+1)
-                
-                prev_loss = curr_loss
-                curr_loss = 0
+    config = tf.ConfigProto(allow_soft_placement = True)
+    #config.gpu_options.per_process_gpu_memory_fraction=0.9
+    config.gpu_options.allow_growth = True
+    with tf.Session(config=config) as sess:
+      tf.initialize_all_variables().run()
+      summary_writer = tf.train.SummaryWriter(self.log_path, graph=tf.get_default_graph())
+      saver = tf.train.Saver(max_to_keep=40)
+
+      if self.pretrained_model is not None:
+        print "Start training with pretrained Model.."
+        saver.restore(sess, self.pretrained_model)
+
+      prev_loss = -1
+      curr_loss = 0
+      start_t = time.time()
+
+      for e in range(self.n_epochs):
+        rand_idxs = np.random.permutation(n_examples)
+        captions = captions[rand_idxs]
+        image_idxs = image_idxs[rand_idxs]
+
+        for i in range(n_iters_per_epoch):
+          captions_batch = captions[i*self.batch_size:(i+1)*self.batch_size]
+          image_idxs_batch = image_idxs[i*self.batch_size:(i+1)*self.batch_size]
+          features_batch = features[image_idxs_batch]
+          feed_dict = {self.model.features: features_batch, self.model.captions: captions_batch}
+          _, l = sess.run([train_op, loss], feed_dict)
+          curr_loss += l
+
+          if i % 10 == 0:
+            summary = sess.run(summary_op, feed_dict)
+            summary_writer.add_summary(summary, e*n_examples + i)
+
+          if (i+1) % self.print_every == 0:
+            print "\nTrain loss at epoch %d & iteration %d (mini-batch): %.5f" %(e+1, i+1, l)
+            ground_truths = captions[image_idxs == image_idxs_batch[0]]
+            decoded = decode_captions(ground_truths, self.model.idx_to_word)
+            for j, gt in enumerate(decoded):
+              print "Ground truth %d: %s" %(j+1, gt)                    
+            gen_caps = sess.run(generated_captions, feed_dict)
+            decoded = decode_captions(gen_caps, self.model.idx_to_word)
+            print "Generated caption: %s\n" %decoded[0]
+
+        print "Previous epoch loss: ", prev_loss
+        print "Current epoch loss: ", curr_loss
+        print "Elapsed time: ", time.time() - start_t
         
-                
-    def test(self, data, split='train', attention_visualization=True, save_sampled_captions=True):
-        '''
-        Sample captions and visualize attention weights for image data
-        Save sampled captions in pickle file
-        Inputs:
-        - data: dictionary with the following keys:
-            - features: feature vectors of shape (5000, 196, 512)
-            - file_names: image file names of shape (5000, )
-            - captions: captions of shape (24210, 17) 
-            - image_idxs: indices for mapping caption to image of shape (24210, ) 
-            - features_to_captions: mapping feature to captions (5000, 4~5)
-        - split: 'train', 'val' or 'test'
-        '''
+        if self.print_bleu:
+          all_gen_cap = np.ndarray((val_features.shape[0], max_len))
+          for i in range(n_iters_val):
+            features_batch = val_features[i*self.batch_size:(i+1)*self.batch_size]
+            feed_dict = {self.model.features: features_batch}
+            gen_cap = sess.run(generated_captions, feed_dict=feed_dict)  
+            all_gen_cap[i*self.batch_size:(i+1)*self.batch_size] = gen_cap
+          all_decoded = decode_captions(all_gen_cap, self.model.idx_to_word)
+          save_pickle(all_decoded, "./data/val/val.candidate.captions.pkl")
+          scores = evaluate(data_path='./data', split='val', get_scores=True)
+          write_bleu(scores=scores, path=self.model_path, epoch=e)
 
-        features = data['features']
-
-            
-        # Build a graph for sampling captions
-        max_len = 20
-        alphas, sampled_captions = self.model.build_sampler(max_len)    # (N, max_len, L), (N, max_len)
+        if (e+1) % self.save_every == 0:
+          saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
+          print "model-%s saved." %(e+1)
         
-        config = tf.ConfigProto(allow_soft_placement=True)
-        #config.gpu_options.per_process_gpu_memory_fraction=0.5
-        config.gpu_options.allow_growth = True
-        with tf.Session(config=config) as sess:
-            # restore trained model
-            saver = tf.train.Saver(max_to_keep=10)
-            saver.restore(sess, self.test_model)
-            
-            # actual test step: sample captions and visualize attention
-            _, features_batch, image_files = sample_coco_minibatch(data, self.batch_size)
-            feed_dict = { self.model.features: features_batch }
-            alps, sam_cap = sess.run([alphas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
-            decoded = decode_captions(sam_cap, self.model.idx_to_word)
+        prev_loss = curr_loss
+        curr_loss = 0
+           
+  def test(self, data, split='train', attention_visualization=True, save_sampled_captions=True):
+    '''
+    Args:
+    - data: dictionary with the following keys:
+      - features: Feature vectors of shape (5000, 196, 512)
+      - file_names: Image file names of shape (5000, )
+      - captions: Captions of shape (24210, 17) 
+      - image_idxs: Indices for mapping caption to image of shape (24210, ) 
+      - features_to_captions: Mapping feature to captions (5000, 4~5)
+    - split: 'train', 'val' or 'test'
+    - attention_visualization: If True, visualize attention weights with images for each sampled word. (ipthon notebook)
+    - save_sampled_captions: If True, save sampled captions to pkl file for computing BLEU scores.
+    '''
 
-            if attention_visualization:
-                # visualize 10 images and captions 
-                for n in range(10):
-                    print "Sampled Caption: %s" %decoded[n]
+    features = data['features']
 
-                    # plot original image
-                    if split is 'train':
-                        image_path = self.image_path
-                    else:
-                        image_path = self.test_image_path
-                    img_path = os.path.join(image_path, image_files[n])
-                    img = ndimage.imread(img_path)
-                    plt.subplot(4, 5, 1)
-                    plt.imshow(img)
-                    plt.axis('off')
+    # Build a graph for sampling captions
+    alphas, sampled_captions = self.model.build_sampler(max_len=20)    # (N, max_len, L), (N, max_len)
+    
+    config = tf.ConfigProto(allow_soft_placement=True)
+    config.gpu_options.allow_growth = True
+    with tf.Session(config=config) as sess:
+      saver = tf.train.Saver()
+      saver.restore(sess, self.test_model)
+      _, features_batch, image_files = sample_coco_minibatch(data, self.batch_size)
+      feed_dict = { self.model.features: features_batch }
+      alps, sam_cap = sess.run([alphas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
+      decoded = decode_captions(sam_cap, self.model.idx_to_word)
 
-                    # plot image with attention weights
-                    words = decoded[n].split(" ")
-                    for t in range(len(words)):
-                        if t>18:
-                            break
-                        plt.subplot(4, 5, t+2)
-                        plt.text(0, 1, words[t], color='black', backgroundcolor='white', fontsize=12)
-                        plt.imshow(img)
-                        alp_curr = alps[n,t,:].reshape(14,14)
-                        alp_img = skimage.transform.pyramid_expand(alp_curr, upscale=16, sigma=20)
-                        plt.imshow(alp_img, alpha=0.8)
-                        plt.axis('off')
-                    plt.show()
+      if attention_visualization:
+        for n in range(10):
+          print "Sampled Caption: %s" %decoded[n]
 
-            if save_sampled_captions:
-                # sample captions for all dataset and save into pickle format
-                all_sam_cap = np.ndarray((features.shape[0], max_len))
-                num_iter = int(np.ceil(float(features.shape[0]) / self.test_batch_size))
-                for i in range(num_iter):
-                    features_batch = features[i*self.test_batch_size:(i+1)*self.test_batch_size]
-                    feed_dict = { self.model.features: features_batch }
-                    all_sam_cap[i*self.test_batch_size:(i+1)*self.test_batch_size] = sess.run(sampled_captions, feed_dict)  
+          # Plot original image
+          img_path = os.path.join(self.image_path, image_files[n])
+          img = ndimage.imread(img_path)
+          plt.subplot(4, 5, 1)
+          plt.imshow(img)
+          plt.axis('off')
 
-                # decode all sampled captions
-                all_decoded = decode_captions(all_sam_cap, self.model.idx_to_word)
-                with open(os.path.join(self.candidate_caption_path, "%s/%s.candidate.captions.pkl" %(split,split)), 'wb') as f:
-                    pickle.dump(all_decoded, f, pickle.HIGHEST_PROTOCOL)
-                    print "saved %s.candidate.captions.pkl.." %split
+          # Plot images with attention weights
+          words = decoded[n].split(" ")
+          for t in range(len(words)):
+            if t>18:
+                break
+            plt.subplot(4, 5, t+2)
+            plt.text(0, 1, words[t], color='black', backgroundcolor='white', fontsize=12)
+            plt.imshow(img)
+            alp_curr = alps[n,t,:].reshape(14,14)
+            alp_img = skimage.transform.pyramid_expand(alp_curr, upscale=16, sigma=20)
+            plt.imshow(alp_img, alpha=0.8)
+            plt.axis('off')
+          plt.show()
+
+      if save_sampled_captions:
+        all_sam_cap = np.ndarray((features.shape[0], 20))
+        num_iter = int(np.ceil(float(features.shape[0]) / self.batch_size))
+        for i in range(num_iter):
+          features_batch = features[i*self.batch_size:(i+1)*self.batch_size]
+          feed_dict = { self.model.features: features_batch }
+          all_sam_cap[i*self.batch_size:(i+1)*self.batch_size] = sess.run(sampled_captions, feed_dict)  
+        all_decoded = decode_captions(all_sam_cap, self.model.idx_to_word)
+        save_pickle(all_decoded, "./data/%s/%s.candidate.captions.pkl" %(split,split))
