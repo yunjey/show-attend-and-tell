@@ -1,14 +1,15 @@
-"""
-This is a implementation of forward prop layers.
-There are some notations. 
-N is batch size.
-L is spacial size of feature vector (196)
-D is dimension of image feature vector (512)
-T is the number of time step which is equal to (length of each caption) - 1.
-V is vocabulary size. 
-M is dimension of word vector which is embedding size.
-H is dimension of hidden state.
-"""
+# =========================================================================================
+# Implementation of "Show, Attend and Tell: Neural Caption Generator With Visual Attention".
+# There are some notations.
+# N is batch size.
+# L is spacial size of feature vector (196).
+# D is dimension of image feature vector (512).
+# T is the number of time step which is equal to caption's length-1 (16).
+# V is vocabulary size (about 10000).
+# M is dimension of word vector which is embedding size (default is 512).
+# H is dimension of hidden state (default is 1024).
+# =========================================================================================
+
 import tensorflow as tf
 
 

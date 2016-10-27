@@ -1,14 +1,17 @@
-"""
-This is a model implementation for "Show, Attend and Tell: Neural Caption Generator With Visual Attention" (See http://arxiv.org/abs/1502.03044).
-There are some notations. 
-N is batch size.
-L is spacial size of feature vector (196).
-D is dimension of image feature vector (512).
-T is the number of time step which is equal to caption's length - 1 (16).
-V is vocabulary size (about 10000). 
-M is dimension of word vector which is embedding size (default is 512).
-H is dimension of hidden state (default is 1024).
-"""
+# =========================================================================================
+# Implementation of "Show, Attend and Tell: Neural Caption Generator With Visual Attention".
+# There are some notations.
+# N is batch size.
+# L is spacial size of feature vector (196).
+# D is dimension of image feature vector (512).
+# T is the number of time step which is equal to caption's length-1 (16).
+# V is vocabulary size (about 10000).
+# M is dimension of word vector which is embedding size (default is 512).
+# H is dimension of hidden state (default is 1024).
+# =========================================================================================
+from __future__ import division
+
+
 import tensorflow as tf
 import numpy as np
 from layers import init_lstm, word_embedding_forward, project_feature
@@ -107,6 +110,7 @@ class CaptionGenerator(object):
         # for simplification
         features = self.features
         captions = self.captions
+        batch_size = tf.shape(features)[0]
 
         # captions for input/output and mask matrix
         captions_in = captions[:, :self.T]      
@@ -168,7 +172,7 @@ class CaptionGenerator(object):
             alpha_reg = self.alpha_c * tf.reduce_sum((16./196 - alphas_all) ** 2)     
             loss += alpha_reg  
 
-        return loss 
+        return loss / tf.to_float(batch_size)
 
 
     def build_sampler(self, max_len=20):
