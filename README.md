@@ -6,9 +6,9 @@ TensorFlow implementation of [Show, Attend and Tell: Neural Image Caption Genera
 <br/>
 
 ## References
-Author's theano source code: https://github.com/kelvinxu/arctic-captions
+The referenced author's theano code can be found [here] (https://github.com/kelvinxu/arctic-captions).
 
-This is an upgraded version of the existing tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
+This repo is an upgraded version of the existing tensorflow implementation. You can find it [here] (https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow).
 
 <br/>
 
