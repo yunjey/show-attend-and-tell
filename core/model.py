@@ -17,11 +17,22 @@ import tensorflow as tf
 
 
 class CaptionGenerator(object):
-  
-  def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=512, dim_hidden=1024, n_time_step=None, 
+  def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=512, dim_hidden=1024, n_time_step=16, 
               prev2out=True, ctx2out=True, alpha_c=0.0, selector=True, dropout=True):
-
-    # Initialize some hyper parameters
+    """
+    Args:
+      word_to_idx: word-to-index mapping dictionary.
+      dim_feature: (optional) Dimension of vggnet19 conv5_3 feature vectors.
+      dim_embed: (optional) Dimension of word embedding.
+      dim_hidden: (optional) Dimension of all hidden state.
+      n_time_step: (optional) Time step size of LSTM. 
+      prev2out: (optional) previously generated word to hidden state. (see Eq (2) for explanation)
+      ctx2out: (optional) context to hidden state (see Eq (2) for explanation)
+      alpha_c: (optional) Doubly stochastic regularization coefficient. (see Section (4.2.1) for explanation)
+      selector: (optional) gating scalar for context vector. (see Section (4.2.1) for explanation)
+      dropout: (optional) If true then dropout layer is added.
+    """
+    
     self.word_to_idx = word_to_idx
     self.idx_to_word = {i: w for w, i in word_to_idx.iteritems()}
     self.prev2out = prev2out
@@ -37,11 +48,9 @@ class CaptionGenerator(object):
     self.T = n_time_step
     self._start = word_to_idx['<START>']
     self._null = word_to_idx['<NULL>']
-
-    # Variable initializer
     self.weight_initializer = tf.contrib.layers.xavier_initializer()
     self.const_initializer = tf.constant_initializer(0.0)
-    self.emb_initializer = tf.random_uniform_initializer(minval=-1.0, maxval=1.0)
+    self.emb_initializer = tf.random_normal_initializer()
 
     # Place holder for features and captions
     self.features = tf.placeholder(tf.float32, [None, self.L, self.D])
@@ -50,6 +59,7 @@ class CaptionGenerator(object):
   def _get_initial_lstm(self, features):
     with tf.variable_scope('initial_lstm'):
       features_mean = tf.reduce_mean(features, 1)
+      
       w_h = tf.get_variable('w_h', [self.D, self.H], initializer=self.weight_initializer)
       b_h = tf.get_variable('b_h', [self.H], initializer=self.const_initializer)
       h = tf.nn.tanh(tf.matmul(features_mean, w_h) + b_h)
@@ -82,21 +92,18 @@ class CaptionGenerator(object):
 
       if dropout:
         h = tf.nn.dropout(h, 0.5)
-
       h_logits = tf.matmul(h, w_h) + b_h
-      
+
       if self.ctx2out:
         w_ctx2out = tf.get_variable('w_ctx2out', [self.D, self.M], initializer=self.weight_initializer)
         h_logits += tf.matmul(context, w_ctx2out)
 
       if self.prev2out:
         h_logits += x
-
       h_logits = tf.nn.tanh(h_logits)
 
       if dropout:
         h_logits = tf.nn.dropout(h_logits, 0.5)
-
       out_logits = tf.matmul(h_logits, w_out) + b_out
       return out_logits
 
@@ -121,30 +128,23 @@ class CaptionGenerator(object):
       return context, alpha
 
   def build_model(self):
-    """
-    For given image features and captions, build a graph where root node is loss.  
-    """
-
     features = self.features
     captions = self.captions
     batch_size = tf.shape(features)[0]
 
-    # Captions for input/output and mask matrix
     captions_in = captions[:, :self.T]      
     captions_out = captions[:, 1:]  
     mask = tf.to_float(tf.not_equal(captions_out, self._null))
     
     c, h = self._get_initial_lstm(features=features)
-
     x = self._word_embedding(inputs=captions_in)
-
     features_proj = self._project_features(features=features)
 
     loss = 0.0
     alpha_list = []
     lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.H)
-    for t in range(self.T):
 
+    for t in range(self.T):
       context, alpha = self._attention_layer(features, features_proj, h, reuse=(t!=0))
       alpha_list.append(alpha)
 
@@ -155,45 +155,36 @@ class CaptionGenerator(object):
         _, (c, h) = lstm_cell(inputs=tf.concat(1, [x[:,t,:], context]), state=[c, h])
 
       logits = self._decode_lstm(x[:,t,:], h, context, dropout=self.dropout, reuse=(t!=0))
-
       loss += tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits, captions_out[:, t]) * mask[:, t])
-      
-    # Doubly stochastic regularization 
+       
     if self.alpha_c > 0:
       alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     # (N, T, L)
       alphas_all = tf.reduce_sum(alphas, 1)      # (N, L)
       alpha_reg = self.alpha_c * tf.reduce_sum((16./196 - alphas_all) ** 2)     
-      loss += alpha_reg  
+      loss += alpha_reg
 
     return loss / tf.to_float(batch_size)
 
 
   def build_sampler(self, max_len=20):
-    """
-    - For given image features, build a graph where root nodes are sampled_captions and alphas.
-    - alphas: soft attention weights for visualization
-    - sampled_captions: sampled word indices
-    """
-
     features = self.features
     
     c, h = self._get_initial_lstm(features=features)
-
     features_proj = self._project_features(features=features)
 
     sampled_word_list = []
     alpha_list = []
     lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.H)
-    for t in range(max_len):
 
+    for t in range(max_len):
       if t == 0:
         x = self._word_embedding(inputs=tf.fill([tf.shape(features)[0]], self._start))
       else:
         x = self._word_embedding(inputs=sampled_word, reuse=True)  
-
+      
       context, alpha = self._attention_layer(features, features_proj, h, reuse=(t!=0))
       alpha_list.append(alpha)
-        
+
       if self.selector:
         context = self._selector(context, h, reuse=(t!=0)) 
 
@@ -201,12 +192,9 @@ class CaptionGenerator(object):
         _, (c, h) = lstm_cell(inputs=tf.concat(1, [x, context]), state=[c, h])
 
       logits = self._decode_lstm(x, h, context, reuse=(t!=0))
-      
-      # sample word indices with logits
-      sampled_word = tf.argmax(logits, 1)       # (N, ) where each element is word index in the range [0, V) 
-      sampled_word_list.append(sampled_word)    # tensorflow doesn't provide item assignment 
+      sampled_word = tf.argmax(logits, 1)       
+      sampled_word_list.append(sampled_word)     
 
     alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     # (N, T, L)
     sampled_captions = tf.transpose(tf.pack(sampled_word_list), (1, 0))     # (N, max_len)
-
     return alphas, sampled_captions
