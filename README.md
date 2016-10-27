@@ -10,6 +10,12 @@ Author's theano source code: https://github.com/kelvinxu/arctic-captions
 
 Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
 
+<br/>
+
+## Model Architecture
+
+Tensorboard visualization of the model is as follows:
+![alt text](jpg/model.jpg "model image")
 
 <br/>
 
