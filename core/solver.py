@@ -78,7 +78,7 @@ class CaptioningSolver(object):
         self.test_model = kwargs.pop('test_model', './model/lstm/model-1')
         self.test_batch_size = kwargs.pop('test_batch_size', 100)
         self.candidate_caption_path = kwargs.pop('candidate_caption_path', './data/')
-        self.print_bleu = kwargs.pop('print_bleu', True)
+        self.print_bleu = kwargs.pop('print_bleu', False)
 
         # Book-keeping variables 
         self.best_model = None
@@ -116,6 +116,7 @@ class CaptioningSolver(object):
         # training dataset
         features = self.data['features']
         captions = self.data['captions']
+        image_idxs = self.data['image_idxs']
         
         # validation dataset
         val_features = self.val_data['features']
@@ -133,8 +134,8 @@ class CaptioningSolver(object):
         print "Iterations per epoch: %d" %n_iters_per_epoch
         
         config = tf.ConfigProto(allow_soft_placement = True)
-        config.gpu_options.per_process_gpu_memory_fraction=0.9
-        #config.gpu_options.allow_growth = True
+        #config.gpu_options.per_process_gpu_memory_fraction=0.9
+        config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
             tf.initialize_all_variables().run()
             saver = tf.train.Saver(max_to_keep=40)
@@ -149,11 +150,11 @@ class CaptioningSolver(object):
                 # random shuffle caption data
                 rand_idxs = np.random.permutation(n_examples)
                 captions = captions[rand_idxs]
-                features = features[rand_idxs]
+                image_idxs = image_idxs[rand_idxs]
                 for i in range(n_iters_per_epoch):
-                    # get batch data (lengths of all mini-batch captions are same)
                     captions_batch = captions[i*self.batch_size:(i+1)*self.batch_size]
-                    features_batch = features[i*self.batch_size:(i+1)*self.batch_size]
+                    image_idxs_batch = image_idxs[i*self.batch_size:(i+1)*self.batch_size]
+                    features_batch = features[image_idxs_batch]
 
                     # print initial loss
                     if e == 0 and i == 0:
@@ -178,15 +179,15 @@ class CaptioningSolver(object):
                         print "\n*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*"
                         print "Train loss at epoch %d & iteration %d (mini-batch): %.5f" %(e+1, i+1, l)
                         # print out ground truth
-                        for j in range(2):
-                            ground_truth = captions_batch[j]
-                            decoded = decode_captions(ground_truth, self.model.idx_to_word)
-                            print "Ground truth %d: %s" %(j+1, decoded[0])        
+                        
+                        ground_truths = captions[image_idxs == image_idxs_batch[0]]
+                        decoded = decode_captions(ground_truths, self.model.idx_to_word)
+                        for j, gt in enumerate(decoded):
+                            print "Ground truth %d: %s" %(j+1, gt)        
                         # print out generated captions                       
                         gen_caps = sess.run(generated_captions, feed_dict)
                         decoded = decode_captions(gen_caps, self.model.idx_to_word)
-                        for j in range(2):
-                            print "Generated caption: %s" %decoded[j]
+                        print "Generated caption: %s" %decoded[0]
                         print "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*\n"
                         # save loss history
                         l = sess.run(loss, feed_dict)
