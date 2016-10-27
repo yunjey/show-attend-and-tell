@@ -47,27 +47,34 @@ def load_coco_data(data_path='./data', split='train', feature='conv5_3'):
     return data
 
 def decode_captions(captions, idx_to_word):
-    """
+  """
     Inputs:
-    - captions: numpy ndarray which contains word indices in the range [0, V), of shape (N, T)
+    - captions: numpy ndarray which contains word indices in the range [0, V), of shape (T,) or (N, T)
     - idx_to_word: index to word mapping dictionary
     Returns:
-    - decoded: decoded senteces; list of length N
+    - decoded: decoded senteces; list of length 1 or N
     """
+  if captions.ndim == 1:
+    T = captions.shape[0]
+    N = 1
+  else:
     N, T = captions.shape
-    decoded = []
 
-    for i in range(N):
-        words = []
-        for t in range(T):
-            word = idx_to_word[captions[i, t]]
-            if word == '<END>':
-                words.append('.')
-                break
-            if word != '<NULL>':
-                words.append(word)
-        decoded.append(' '.join(words))
-    return decoded
+  decoded = []
+  for i in range(N):
+    words = []
+    for t in range(T):
+      if captions.ndim == 1:
+        word = idx_to_word[captions[t]]
+      else:
+        word = idx_to_word[captions[i, t]]
+      if word == '<END>':
+        words.append('.')
+        break
+      if word != '<NULL>':
+        words.append(word)
+    decoded.append(' '.join(words))
+  return decoded
 
 def sample_coco_minibatch(data, batch_size):
     """
