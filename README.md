@@ -1,14 +1,14 @@
 # Show, Attend and Tell 
-This is a TensorFlow implementation for [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention](http://arxiv.org/abs/1502.03044)
+TensorFlow implementation of [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention] (http://arxiv.org/abs/1502.03044) which introduces an attention based image caption generator. The model can automatically learn to fix its gaze on salient objects while generating the corresponding words in the output seqeunce.
 
 
 
 <br/>
 
 ## References
-Author's theano source code: https://github.com/kelvinxu/arctic-captions
+The referenced author's theano code can be found [here] (https://github.com/kelvinxu/arctic-captions).
 
-Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
+This repo is an upgraded version of the existing tensorflow implementation. You can find it [here] (https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow).
 
 <br/>
 
