@@ -18,25 +18,7 @@ Referenced author's theano code can be found [here] (https://github.com/kelvinxu
 
 #### Prerequisites 
 
-This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). If you're on Ubuntu, installing TensorFlow using [Anaconda](https://www.continuum.io/downloads) may look something like: 
-
-For cpu version, 
-
-```bash
-$ source anaconda2/bin/activate ~/anaconda2/
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
-$ pip install --ignore-installed --upgrade $TF_BINARY_URL
-```
-
-For gpu version,
- 
-```bash
-$ source anaconda2/bin/activate ~/anaconda2/
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.11.0rc0-cp27-none-linux_x86_64.whl
-$ pip install --ignore-installed --upgrade $TF_BINARY_URL
-```
-
-In addition, we need to install a few more packages (e.g. hickle, scikit-image) to process MSCOCO data set.
+This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, we need to install a few more packages to process MSCOCO data set.
 To install the required python packages, run:
 
 ```bash
@@ -88,7 +70,7 @@ Open new terminal. Run command below and open http://localhost:6005/ into your w
 $ tensorboard --logdir='./log' --port=6005 
 ```
 
- 
+#### Evaluate the model (on progress)
 
 
 <br/>
