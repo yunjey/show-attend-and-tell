@@ -72,7 +72,7 @@ class CaptionGenerator(object):
   def _word_embedding(self, inputs, reuse=False):
     with tf.variable_scope('word_embedding', reuse=reuse):
       w = tf.get_variable('w', [self.V, self.M], initializer=self.emb_initializer)
-      x = tf.nn.embedding_lookup(w, inputs)  # (N, T, M) or (N, M)
+      x = tf.nn.embedding_lookup(w, inputs, name='word_vector')  # (N, T, M) or (N, M)
       return x
 
   def _project_features(self, features):
@@ -111,9 +111,9 @@ class CaptionGenerator(object):
     with tf.variable_scope('selector', reuse=reuse):
       w = tf.get_variable('w', [self.H, 1], initializer=self.weight_initializer)
       b = tf.get_variable('b', [1], initializer=self.const_initializer)
-      beta = tf.nn.sigmoid(tf.matmul(h, w) + b)    # (N, 1)
-      context = beta * context 
-      return context
+      beta = tf.nn.sigmoid(tf.matmul(h, w) + b, 'beta')    # (N, 1)
+      context = tf.mul(beta, context, name='selected_context') 
+      return context, beta
 
   def _attention_layer(self, features, features_proj, h, reuse=False):
     with tf.variable_scope('attention_layer', reuse=reuse):
@@ -124,7 +124,7 @@ class CaptionGenerator(object):
       h_att = features_proj + tf.expand_dims(tf.matmul(h, w), 1) + b    # (N, L, D)
       out_att = tf.reshape(tf.matmul(tf.reshape(h_att, [-1, self.D]), w_att), [-1, self.L])   # (N, L)
       alpha = tf.nn.softmax(out_att)  
-      context = tf.reduce_sum(features * tf.expand_dims(alpha, 2), 1)   #(N, D)
+      context = tf.reduce_sum(features * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
       return context, alpha
 
   def build_model(self):
@@ -149,7 +149,7 @@ class CaptionGenerator(object):
       alpha_list.append(alpha)
 
       if self.selector:
-        context = self._selector(context, h, reuse=(t!=0)) 
+        context, beta = self._selector(context, h, reuse=(t!=0)) 
 
       with tf.variable_scope('lstm', reuse=(t!=0)):
         _, (c, h) = lstm_cell(inputs=tf.concat(1, [x[:,t,:], context]), state=[c, h])
@@ -174,6 +174,7 @@ class CaptionGenerator(object):
 
     sampled_word_list = []
     alpha_list = []
+    beta_list = []
     lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.H)
 
     for t in range(max_len):
@@ -186,7 +187,8 @@ class CaptionGenerator(object):
       alpha_list.append(alpha)
 
       if self.selector:
-        context = self._selector(context, h, reuse=(t!=0)) 
+        context, beta = self._selector(context, h, reuse=(t!=0)) 
+        beta_list.append(beta)
 
       with tf.variable_scope('lstm', reuse=(t!=0)):
         _, (c, h) = lstm_cell(inputs=tf.concat(1, [x, context]), state=[c, h])
@@ -196,5 +198,6 @@ class CaptionGenerator(object):
       sampled_word_list.append(sampled_word)     
 
     alphas = tf.transpose(tf.pack(alpha_list), (1, 0, 2))     # (N, T, L)
+    betas = tf.transpose(tf.squeeze(beta_list), (1, 0))    # (N, T)
     sampled_captions = tf.transpose(tf.pack(sampled_word_list), (1, 0))     # (N, max_len)
-    return alphas, sampled_captions
+    return alphas, betas, sampled_captions

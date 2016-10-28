@@ -89,7 +89,7 @@ class CaptioningSolver(object):
     # Build graphs for training model and sampling captions
     loss = self.model.build_model()
     tf.get_variable_scope().reuse_variables()
-    _, generated_captions = self.model.build_sampler(max_len=20)
+    _, _, generated_captions = self.model.build_sampler(max_len=20)
 
     # Train op
     with tf.name_scope('optimizer'):
@@ -98,14 +98,21 @@ class CaptioningSolver(object):
       grads_and_vars = list(zip(grads, tf.trainable_variables()))
       train_op = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
        
-    # Summary op
+    # Summary op   
     tf.scalar_summary('batch_loss', loss)
-
     for var in tf.trainable_variables():
       tf.histogram_summary(var.op.name, var)
-
     for grad, var in grads_and_vars:
-      tf.histogram_summary(var.op.name + '/gradient', grad)
+      tf.histogram_summary(var.op.name+'/gradient', grad)
+
+    ctx = tf.get_default_graph().get_tensor_by_name("attention_layer/context:0")
+    sel_ctx = tf.get_default_graph().get_tensor_by_name("selector/selected_context:0")
+    beta = tf.get_default_graph().get_tensor_by_name("selector/beta:0")
+    word_vec = tf.get_default_graph().get_tensor_by_name("word_embedding/word_vector:0")
+    for tensor in [ctx, sel_ctx, beta, word_vec]:
+      grads = tf.gradients(loss, tensor)
+      tf.histogram_summary(tensor.op.name, tensor)
+      tf.histogram_summary(tensor.op.name+'gradient', grads)
 
     summary_op = tf.merge_all_summaries() 
 
@@ -162,7 +169,7 @@ class CaptioningSolver(object):
         print "Elapsed time: ", time.time() - start_t
         
         if self.print_bleu:
-          all_gen_cap = np.ndarray((val_features.shape[0], max_len))
+          all_gen_cap = np.ndarray((val_features.shape[0], 20))
           for i in range(n_iters_val):
             features_batch = val_features[i*self.batch_size:(i+1)*self.batch_size]
             feed_dict = {self.model.features: features_batch}
@@ -197,7 +204,7 @@ class CaptioningSolver(object):
     features = data['features']
 
     # Build a graph for sampling captions
-    alphas, sampled_captions = self.model.build_sampler(max_len=20)    # (N, max_len, L), (N, max_len)
+    alphas, betas, sampled_captions = self.model.build_sampler(max_len=20)    # (N, max_len, L), (N, max_len)
     
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
@@ -206,7 +213,7 @@ class CaptioningSolver(object):
       saver.restore(sess, self.test_model)
       _, features_batch, image_files = sample_coco_minibatch(data, self.batch_size)
       feed_dict = { self.model.features: features_batch }
-      alps, sam_cap = sess.run([alphas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
+      alps, bts, sam_cap = sess.run([alphas, betas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
       decoded = decode_captions(sam_cap, self.model.idx_to_word)
 
       if attention_visualization:
@@ -226,7 +233,8 @@ class CaptioningSolver(object):
             if t>18:
                 break
             plt.subplot(4, 5, t+2)
-            plt.text(0, 1, words[t], color='black', backgroundcolor='white', fontsize=12)
+            plt.text(0, 1, '%s(%.2f)'%(words[t], bts[n,t]) , color='black', backgroundcolor='white', fontsize=8)
+            #plt.text(0, 20, bts[n,t], color='black', backgroundcolor='white', fontsize=12)
             plt.imshow(img)
             alp_curr = alps[n,t,:].reshape(14,14)
             alp_img = skimage.transform.pyramid_expand(alp_curr, upscale=16, sigma=20)
