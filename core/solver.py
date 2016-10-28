@@ -104,16 +104,7 @@ class CaptioningSolver(object):
       tf.histogram_summary(var.op.name, var)
     for grad, var in grads_and_vars:
       tf.histogram_summary(var.op.name+'/gradient', grad)
-    '''
-    ctx = tf.get_default_graph().get_tensor_by_name("attention_layer/context:0")
-    sel_ctx = tf.get_default_graph().get_tensor_by_name("selector/selected_context:0")
-    beta = tf.get_default_graph().get_tensor_by_name("selector/beta:0")
-    word_vec = tf.get_default_graph().get_tensor_by_name("word_embedding/word_vector:0")
-    for tensor in [ctx, sel_ctx, beta, word_vec]:
-      grads = tf.gradients(loss, tensor)
-      tf.histogram_summary(tensor.op.name, tensor)
-      tf.histogram_summary(tensor.op.name+'gradient', grads)
-    '''
+    
     summary_op = tf.merge_all_summaries() 
 
     print "The number of epoch: %d" %self.n_epochs
@@ -238,7 +229,7 @@ class CaptioningSolver(object):
             plt.imshow(img)
             alp_curr = alps[n,t,:].reshape(14,14)
             alp_img = skimage.transform.pyramid_expand(alp_curr, upscale=16, sigma=20)
-            plt.imshow(alp_img, alpha=0.8)
+            plt.imshow(alp_img, alpha=0.85)
             plt.axis('off')
           plt.show()
 

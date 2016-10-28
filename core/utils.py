@@ -10,7 +10,7 @@ def load_coco_data(data_path='./data', split='train'):
   start_t = time.time()
   data = {}
   
-  data['features'] = hickle.load(os.path.join(data_path, '%s.features.conv5_3.hkl' %split))
+  data['features'] = hickle.load(os.path.join(data_path, '%s.features.hkl' %split))
   with open(os.path.join(data_path, '%s.captions.pkl' %split), 'rb') as f:
       data['captions'] = pickle.load(f)
   with open(os.path.join(data_path, '%s.image.idxs.pkl' %split), 'rb') as f:
