@@ -1,0 +1,8 @@
+numpy
+matplotlib
+scipy
+scikit-image
+hickle
+Pillow
+
+
