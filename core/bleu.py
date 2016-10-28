@@ -22,16 +22,11 @@ def score(ref, hypo):
                 final_scores[m] = s
         else:
             final_scores[method] = score
-    print 'Bleu_1:\t',final_scores['Bleu_1']  
-    print 'Bleu_2:\t',final_scores['Bleu_2']  
-    print 'Bleu_3:\t',final_scores['Bleu_3']  
-    print 'Bleu_4:\t',final_scores['Bleu_4']  
-    print 'METEOR:\t',final_scores['METEOR']  
-    print 'ROUGE_L:',final_scores['ROUGE_L']  
-    print 'CIDEr:\t',final_scores['CIDEr']  
+
+    return final_scores
     
 
-def evaluate(data_path='./data', split='val'):
+def evaluate(data_path='./data', split='val', get_scores=False):
     reference_path = os.path.join(data_path, "%s/%s.reference.captions.pkl" %(split, split))
     candidate_path = os.path.join(data_path, "%s/%s.candidate.captions.pkl" %(split, split))
     
@@ -47,7 +42,21 @@ def evaluate(data_path='./data', split='val'):
         hypo[i] = [caption]
     
     # compute bleu score
-    score(ref, hypo)
+    final_scores = score(ref, hypo)
+
+    # print out scores
+    print 'Bleu_1:\t',final_scores['Bleu_1']  
+    print 'Bleu_2:\t',final_scores['Bleu_2']  
+    print 'Bleu_3:\t',final_scores['Bleu_3']  
+    print 'Bleu_4:\t',final_scores['Bleu_4']  
+    print 'METEOR:\t',final_scores['METEOR']  
+    print 'ROUGE_L:',final_scores['ROUGE_L']  
+    print 'CIDEr:\t',final_scores['CIDEr']
+    
+    if get_scores:
+        return final_scores
+    
+   
     
     
     

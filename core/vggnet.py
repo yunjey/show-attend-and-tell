@@ -40,20 +40,19 @@ class Vgg19(object):
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
 
   def build_model(self):
-    if self.mode == 'extract':
-      for i, layer in enumerate(vgg_layers):
-        layer_type = layer[:4]
-        if layer_type == 'conv':
-          if layer == 'conv1_1':
-            h = self.images
-          h = self._conv(h, self.params[layer]['w'], self.params[layer]['b'])
-        elif layer_type == 'relu':
-          h = self._relu(h)
-        elif layer_type == 'pool':
-          h = self._pool(h)
-        if layer == 'conv5_3':
-          features = tf.reshape(h, [-1, 196, 512])
-          return features
+    for i, layer in enumerate(vgg_layers):
+      layer_type = layer[:4]
+      if layer_type == 'conv':
+        if layer == 'conv1_1':
+          h = self.images
+        h = self._conv(h, self.params[layer]['w'], self.params[layer]['b'])
+      elif layer_type == 'relu':
+        h = self._relu(h)
+      elif layer_type == 'pool':
+        h = self._pool(h)
+      if layer == 'conv5_3':
+        self.features = tf.reshape(h, [-1, 196, 512])
+        
 
   def build(self):
     self.build_inputs()
