@@ -6,9 +6,7 @@ TensorFlow implementation of [Show, Attend and Tell: Neural Image Caption Genera
 <br/>
 
 ## References
-The referenced author's theano code can be found [here] (https://github.com/kelvinxu/arctic-captions).
-
-This repo is an upgraded version of the existing tensorflow implementation. You can find it [here] (https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow).
+Referenced author's theano code can be found [here] (https://github.com/kelvinxu/arctic-captions). Additionally, this repo is an upgraded version of the existing tensorflow implementation. You can find it [here] (https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow).
 
 <br/>
 
@@ -38,14 +36,14 @@ $ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tenso
 $ pip install --ignore-installed --upgrade $TF_BINARY_URL
 ```
 
-In addition, we need to install a few more packages (e.g. hickle, scikit-image) for processing dataset.
+In addition, we need to install a few more packages (e.g. hickle, scikit-image) to process MSCOCO data set.
 To install the required python packages, run:
 
 ```bash
 $ pip install -r requirements
 ```
 
-For evaluation with BLEU metic, we need to clone [pycocoevalcap](http://mscoco.org/dataset/#download).
+For evaluation, we need to clone [pycocoevalcap](http://mscoco.org/dataset/#download).
 
 ```bash
 $ git clone https://github.com/tylin/coco-caption.git
@@ -76,19 +74,22 @@ To generate `captions.pkl` and `features.pkl`, run :
 $ python prepro.py --batch_size=50 --max_length=15 --word_count_threshold=3
 ```
 
-#### Train the model
+#### Train the model 
 
 ```bash
 $ python train.py --batch_size=64 --epoch=15 --lr=0.001 --model_path='./model/lstm' --log_path='./log' 
-```
 
-#### Tensorboard visualization
+```
+#### (Optional) Tensorboard visualization
+
+Open new terminal. Run command below and open http://localhost:6005/ into your web browser.
 
 ```bash
-$ tensorboard --logdir='./log' --port=6005
-
-Then open http://0.0.0.0:6005/ into your web browser
+$ tensorboard --logdir='./log' --port=6005 
 ```
+
+ 
+
 
 <br/>
 
@@ -123,6 +124,7 @@ If you want to get more details, see `evaluate_model.ipynb`.
 #####(2) Generated caption: A zebra standing in the grass near a tree.
 ![alt text](jpg/test2.jpg "test image")
 
+<br/>
 
 ## Training Details 
 
