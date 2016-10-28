@@ -104,7 +104,7 @@ class CaptioningSolver(object):
       tf.histogram_summary(var.op.name, var)
     for grad, var in grads_and_vars:
       tf.histogram_summary(var.op.name+'/gradient', grad)
-
+    '''
     ctx = tf.get_default_graph().get_tensor_by_name("attention_layer/context:0")
     sel_ctx = tf.get_default_graph().get_tensor_by_name("selector/selected_context:0")
     beta = tf.get_default_graph().get_tensor_by_name("selector/beta:0")
@@ -113,7 +113,7 @@ class CaptioningSolver(object):
       grads = tf.gradients(loss, tensor)
       tf.histogram_summary(tensor.op.name, tensor)
       tf.histogram_summary(tensor.op.name+'gradient', grads)
-
+    '''
     summary_op = tf.merge_all_summaries() 
 
     print "The number of epoch: %d" %self.n_epochs
@@ -152,7 +152,7 @@ class CaptioningSolver(object):
 
           if i % 10 == 0:
             summary = sess.run(summary_op, feed_dict)
-            summary_writer.add_summary(summary, e*n_examples + i)
+            summary_writer.add_summary(summary, e*n_iters_per_epoch + i)
 
           if (i+1) % self.print_every == 0:
             print "\nTrain loss at epoch %d & iteration %d (mini-batch): %.5f" %(e+1, i+1, l)

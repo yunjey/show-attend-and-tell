@@ -48,9 +48,10 @@ class CaptionGenerator(object):
     self.T = n_time_step
     self._start = word_to_idx['<START>']
     self._null = word_to_idx['<NULL>']
-    self.weight_initializer = tf.contrib.layers.xavier_initializer()
+    #self.weight_initializer = tf.contrib.layers.xavier_initializer()
+    self.weight_initializer = tf.random_normal_initializer(mean=0.0, stddev=0.01)
     self.const_initializer = tf.constant_initializer(0.0)
-    self.emb_initializer = tf.random_normal_initializer()
+    self.emb_initializer = tf.random_uniform_initializer(minval=-1.0, maxval=1.0)
 
     # Place holder for features and captions
     self.features = tf.placeholder(tf.float32, [None, self.L, self.D])
@@ -83,6 +84,26 @@ class CaptionGenerator(object):
       features_proj = tf.reshape(features_proj, [-1, self.L, self.D])
       return features_proj
 
+  def _attention_layer(self, features, features_proj, h, reuse=False):
+    with tf.variable_scope('attention_layer', reuse=reuse):
+      w = tf.get_variable('w', [self.H, self.D], initializer=self.weight_initializer)
+      b = tf.get_variable('b', [self.D], initializer=self.const_initializer)
+      w_att = tf.get_variable('w_att', [self.D, 1], initializer=self.weight_initializer)
+
+      h_att = tf.nn.relu(features_proj + tf.expand_dims(tf.matmul(h, w), 1) + b)    # (N, L, D)
+      out_att = tf.reshape(tf.matmul(tf.reshape(h_att, [-1, self.D]), w_att), [-1, self.L])   # (N, L)
+      alpha = tf.nn.softmax(out_att)  
+      context = tf.reduce_sum(features * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
+      return context, alpha
+  
+  def _selector(self, context, h, reuse=False):
+    with tf.variable_scope('selector', reuse=reuse):
+      w = tf.get_variable('w', [self.H, 1], initializer=self.weight_initializer)
+      b = tf.get_variable('b', [1], initializer=self.const_initializer)
+      beta = tf.nn.sigmoid(tf.matmul(h, w) + b, 'beta')    # (N, 1)
+      context = tf.mul(beta, context, name='selected_context') 
+      return context, beta
+  
   def _decode_lstm(self, x, h, context, dropout=False, reuse=False):
     with tf.variable_scope('logits', reuse=reuse):
       w_h = tf.get_variable('w_h', [self.H, self.M], initializer=self.weight_initializer)
@@ -107,25 +128,9 @@ class CaptionGenerator(object):
       out_logits = tf.matmul(h_logits, w_out) + b_out
       return out_logits
 
-  def _selector(self, context, h, reuse=False):
-    with tf.variable_scope('selector', reuse=reuse):
-      w = tf.get_variable('w', [self.H, 1], initializer=self.weight_initializer)
-      b = tf.get_variable('b', [1], initializer=self.const_initializer)
-      beta = tf.nn.sigmoid(tf.matmul(h, w) + b, 'beta')    # (N, 1)
-      context = tf.mul(beta, context, name='selected_context') 
-      return context, beta
+  
 
-  def _attention_layer(self, features, features_proj, h, reuse=False):
-    with tf.variable_scope('attention_layer', reuse=reuse):
-      w = tf.get_variable('w', [self.H, self.D], initializer=self.weight_initializer)
-      b = tf.get_variable('b', [self.D], initializer=self.const_initializer)
-      w_att = tf.get_variable('w_att', [self.D, 1], initializer=self.weight_initializer)
-
-      h_att = features_proj + tf.expand_dims(tf.matmul(h, w), 1) + b    # (N, L, D)
-      out_att = tf.reshape(tf.matmul(tf.reshape(h_att, [-1, self.D]), w_att), [-1, self.L])   # (N, L)
-      alpha = tf.nn.softmax(out_att)  
-      context = tf.reduce_sum(features * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
-      return context, alpha
+  
 
   def build_model(self):
     features = self.features
