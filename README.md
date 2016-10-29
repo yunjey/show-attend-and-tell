@@ -62,24 +62,24 @@ $ python prepro.py --batch_size=50 --max_length=15 --word_count_threshold=3
 $ python train.py --batch_size=64 --epoch=15 --lr=0.001 --model_path='./model/lstm' --log_path='./log' 
 
 ```
-#### (Optional) Tensorboard visualization
+#### (optional) Tensorboard visualization
 
-Open new terminal. Run command below and open http://localhost:6005/ into your web browser.
+For real time debugging, tensorboard visualization is provided. 
+Open new terminal. Run command below and open `http://localhost:6005/` into your web browser.
 
 ```bash
 $ tensorboard --logdir='./log' --port=6005 
 ```
 
-#### Evaluate the model (on progress)
+#### Evaluate the model 
+
+For evaluating the model, please see `evaluate_model.ipynb`.
 
 
 <br/>
 
 ## Results
-Below are visualizations for the attention model.
-
-If you want to get more details, see `evaluate_model.ipynb`. 
-
+ 
 <br/>
 
 ####Training data
