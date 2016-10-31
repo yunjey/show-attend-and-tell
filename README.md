@@ -18,14 +18,7 @@ Referenced author's theano code can be found [here] (https://github.com/kelvinxu
 
 ## Getting Started
 
-#### Prerequisites 
-
-This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, you need to install a few more packages to process [MSCOCO data set](http://mscoco.org/home/).
-To install the required python packages, run:
-
-```bash
-$ pip install -r requirements
-```
+#### Prerequisites
 
 For evaluation, clone [pycocoevalcap](http://mscoco.org/dataset/#download) as below.
 
@@ -33,13 +26,15 @@ For evaluation, clone [pycocoevalcap](http://mscoco.org/dataset/#download) as be
 $ git clone https://github.com/tylin/coco-caption.git
 ```
 
-#### Preparing the training data
+This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, you need to install a few more packages to process [MSCOCO data set](http://mscoco.org/home/).
+To install the required python packages, run:
 
-A script is provided to download the MSCOCO image data and [VGGNet19](http://www.vlfeat.org/matconvnet/pretrained/). Downloading the data may take several hours depending on the network speed. Run commands below then the image data will be downloaded in the image directory and VGGNet will be downloaded in the data directory.
+I have provided a script to download the MSCOCO image data and [VGGNet19](http://www.vlfeat.org/matconvnet/pretrained/). Downloading the data may take several hours depending on the network speed. Run commands below then the image data will be downloaded in the image directory and VGGNet will be downloaded in the data directory.
 
 ```bash
 $ git clone https://github.com/yunjey/show-attend-and-tell-tensorflow.git
 $ cd show-attend-and-tell
+$ pip install -r requirements
 $ chmod +x ./download.sh
 $ ./download.sh
 ```
