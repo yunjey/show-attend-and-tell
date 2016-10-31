@@ -33,8 +33,8 @@ I have provided a script to download the MSCOCO image data and [VGGNet19](http:/
 
 ```bash
 $ git clone https://github.com/yunjey/show-attend-and-tell-tensorflow.git
-$ cd show-attend-and-tell
-$ pip install -r requirements
+$ cd show-attend-and-tell-tensorflow
+$ pip install -r requirements.txt
 $ chmod +x ./download.sh
 $ ./download.sh
 ```
