@@ -50,7 +50,7 @@ Before training the model, you have to preprocess the MSCOCO caption dataset to 
 To generate captions.pkl and features.pkl, run :
 
 ```bash
-$ python prepro.py --batch_size=50 --max_length=15 --word_count_threshold=3
+$ python prepro.py
 ```
 
 #### Train the model 
