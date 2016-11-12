@@ -6,7 +6,6 @@ from core.utils import *
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import nltk
 import hickle
 import os
 import json
@@ -25,34 +24,41 @@ def _process_caption_data(caption_file, image_dir, max_length):
         image_id = annotation['image_id']
         annotation['file_name'] = os.path.join(image_dir, id_to_filename[image_id])
         data += [annotation]
-
+    
     # convert to pandas dataframe (for later visualization or debugging)
     caption_data = pd.DataFrame.from_dict(data)
     del caption_data['id']
     caption_data.sort_values(by='image_id', inplace=True)
     caption_data = caption_data.reset_index(drop=True)
-
+    
     del_idx = []
     for i, caption in enumerate(caption_data['caption']):
-        words = nltk.tokenize.word_tokenize(caption.lower())
-        if len(words) - 1 > max_length:
+        caption = caption.replace('.','').replace(',','').replace("'","").replace('"','')
+        caption = caption.replace('&','and').replace('(','').replace(")","").replace('-',' ')
+        caption = " ".join(caption.split())  # replace multiple spaces
+        
+        caption_data.set_value(i, 'caption', caption.lower())
+        if len(caption.split(" ")) > max_length:
             del_idx.append(i)
-
+    
     # delete captions if size is larger than max_length
-    print "The number of captions before deletion: %d" % len(caption_data)
+    print "The number of captions before deletion: %d" %len(caption_data)
     caption_data = caption_data.drop(caption_data.index[del_idx])
     caption_data = caption_data.reset_index(drop=True)
-    print "The number of captions after deletion: %d" % len(caption_data)
+    print "The number of captions after deletion: %d" %len(caption_data)
     return caption_data
 
 
 def _build_vocab(annotations, threshold=1):
-    captions = annotations['caption']
     counter = Counter()
-    for i, c in enumerate(captions):
-        words = nltk.tokenize.word_tokenize(c.lower())
+    max_len = 0
+    for i, caption in enumerate(annotations['caption']):
+        words = caption.split(' ') # caption contrains only lower-case words
         for w in words:
-            counter[w] += 1
+            counter[w] +=1
+        
+        if len(caption.split(" ")) > max_len:
+            max_len = len(caption.split(" "))
 
     vocab = [word for word in counter if counter[word] >= threshold]
     print ('Filtered %d words to %d words with word count threshold %d.' % (len(counter), len(vocab), threshold))
@@ -62,28 +68,30 @@ def _build_vocab(annotations, threshold=1):
     for word in vocab:
         word_to_idx[word] = idx
         idx += 1
+    print "Max length of caption: ", max_len
     return word_to_idx
 
 
 def _build_caption_vector(annotations, word_to_idx, max_length=15):
     n_examples = len(annotations)
-    captions = np.ndarray((n_examples, max_length + 2)).astype(np.int32)
+    captions = np.ndarray((n_examples,max_length+2)).astype(np.int32)   
 
     for i, caption in enumerate(annotations['caption']):
-        words = nltk.tokenize.word_tokenize(caption.lower())
-        capvec = []
-        capvec.append(word_to_idx['<START>'])
-        # replace a period '.' in caption to special end token '<END>'
-        for word in words[:-1]:
+        words = caption.split(" ") # caption contrains only lower-case words
+        cap_vec = []
+        cap_vec.append(word_to_idx['<START>'])
+        for word in words:
             if word in word_to_idx:
-                capvec.append(word_to_idx[word])
-        capvec.append(word_to_idx['<END>'])
-
-        # padding short captions: add special null token '<NULL>'
-        if len(capvec) < (max_length + 2):
-            for j in range(max_length + 2 - len(capvec)):
-                capvec.append(word_to_idx['<NULL>'])
-        captions[i, :] = np.asarray(capvec)
+                cap_vec.append(word_to_idx[word])
+        cap_vec.append(word_to_idx['<END>'])
+        
+        # pad short caption with the special null token '<NULL>' to make it fixed-size vector
+        if len(cap_vec) < (max_length + 2):
+            for j in range(max_length + 2 - len(cap_vec)):
+                cap_vec.append(word_to_idx['<NULL>']) 
+        
+        captions[i, :] = np.asarray(cap_vec)
+    print "Finished building caption vectors"
     return captions
 
 
@@ -149,15 +157,15 @@ def main():
         if split == 'train':
             word_to_idx = _build_vocab(annotations=annotations, threshold=word_count_threshold)
             save_pickle(word_to_idx, './data/%s/word_to_idx.pkl' % split)
-            captions = _build_caption_vector(annotations=annotations, word_to_idx=word_to_idx, max_length=max_length)
-            save_pickle(captions, './data/%s/%s.captions.pkl' % (split, split))
+        
+        captions = _build_caption_vector(annotations=annotations, word_to_idx=word_to_idx, max_length=max_length)
+        save_pickle(captions, './data/%s/%s.captions.pkl' % (split, split))
 
         file_names, id_to_idx = _build_file_names(annotations)
         save_pickle(file_names, './data/%s/%s.file.names.pkl' % (split, split))
 
-        if split == 'train':
-            image_idxs = _build_image_idxs(annotations, id_to_idx)
-            save_pickle(image_idxs, './data/%s/%s.image.idxs.pkl' % (split, split))
+        image_idxs = _build_image_idxs(annotations, id_to_idx)
+        save_pickle(image_idxs, './data/%s/%s.image.idxs.pkl' % (split, split))
 
         # prepare reference captions to compute bleu scores later
         image_ids = {}
@@ -170,7 +178,7 @@ def main():
                 feature_to_captions[i] = []
             feature_to_captions[i].append(caption.lower() + ' .')
         save_pickle(feature_to_captions, './data/%s/%s.references.pkl' % (split, split))
-        print "Finished building caption dataset"
+        print "Finished building %s caption dataset" %split
 
     # extract conv5_3 feature vectors
     vggnet = Vgg19(vgg_model_path)
