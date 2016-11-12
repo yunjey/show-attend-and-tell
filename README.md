@@ -26,10 +26,7 @@ For evaluation, clone [pycocoevalcap](http://mscoco.org/dataset/#download) as be
 $ git clone https://github.com/tylin/coco-caption.git
 ```
 
-This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, you need to install a few more packages to process [MSCOCO data set](http://mscoco.org/home/).
-To install the required python packages, run:
-
-I have provided a script to download the MSCOCO image dataset and [VGGNet19 model] (http://www.vlfeat.org/matconvnet/pretrained/). Downloading the data may take several hours depending on the network speed. Run commands below then the images will be downloaded in the `image/` directory and <b>VGGNet</b> will be downloaded in the `data/` directory.
+This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, you need to install a few more packages to process [MSCOCO data set](http://mscoco.org/home/). I have provided a script to download the MSCOCO image dataset and [VGGNet19 model] (http://www.vlfeat.org/matconvnet/pretrained/). Downloading the data may take several hours depending on the network speed. Run commands below then the images will be downloaded in the `image/` directory and <b>VGGNet</b> will be downloaded in the `data/` directory.
 
 ```bash
 $ git clone https://github.com/yunjey/show-attend-and-tell-tensorflow.git
@@ -40,14 +37,14 @@ $ ./download.sh
 ```
 
 
-For feeding the image to the VGGNet, we should resize the MSCOCO image dataset to the fixed size of 224x224. Run command below then `train2014_resized/` and `val2014_resized/` will be created in the `image/` directory.
+For feeding the image to the VGGNet, you should resize the MSCOCO image dataset to the fixed size of 224x224. Run command below then `train2014_resized/` and `val2014_resized/` will be created in the `image/` directory.
 
 ```bash
 $ python resize.py
 ```
 
-Before training the model, you have to preprocess the MSCOCO caption dataset to generate <i>captions.pkl</i> and `features.hkl`. captions.pkl is a numpy array in which each row contains a list of word indices. Also, features.hkl is a numpy array which contains activation maps extracted from conv5_3 layer of VGGNet. 
-To generate captions.pkl and features.pkl, run :
+Before training the model, you have to preprocess the MSCOCO caption dataset.
+To generate caption dataset and image feature vectors, run command below.
 
 ```bash
 $ python prepro.py
@@ -56,13 +53,13 @@ $ python prepro.py
 #### Train the model 
 
 ```bash
-$ python train.py --batch_size=64 --epoch=15 --lr=0.001 --model_path='./model/lstm' --log_path='./log' 
+$ python train.py
 
 ```
 #### (optional) Tensorboard visualization
 
-For real time debugging, tensorboard visualization is provided. 
-Open new terminal. Run command below and open `http://localhost:6005/` into your web browser.
+I have provided a tensorboard visualization for real-time debugging.
+Open the new terminal, run command below and open `http://localhost:6005/` into your web browser.
 
 ```bash
 $ tensorboard --logdir='./log' --port=6005 
@@ -70,7 +67,7 @@ $ tensorboard --logdir='./log' --port=6005
 
 #### Evaluate the model 
 
-For evaluating the model, please see `evaluate_model.ipynb`.
+To evaluate the model, please see `evaluate_model.ipynb`.
 
 
 <br/>
