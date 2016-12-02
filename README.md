@@ -1,5 +1,5 @@
 # Show, Attend and Tell 
-TensorFlow implementation of [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention] (http://arxiv.org/abs/1502.03044) which introduces an attention based image caption generator. The model changes its attention to the relevant part of the image while it generates each word.
+<b> Update (December 2, 2016)</b> TensorFlow implementation of [Show, Attend and Tell: Neural Image Caption Generation with Visual Attention] (http://arxiv.org/abs/1502.03044) which introduces an attention based image caption generator. The model changes its attention to the relevant part of the image while it generates each word.
 
 <br/>
 
@@ -37,7 +37,7 @@ $ ./download.sh
 ```
 
 
-For feeding the image to the VGGNet, you should resize the MSCOCO image dataset to the fixed size of 224x224. Run command below then `train2014_resized/` and `val2014_resized/` will be created in the `image/` directory.
+For feeding the image to the VGGNet, you should resize the MSCOCO image dataset to the fixed size of 224x224. Run command below then resized images will be stored in `image/train2014_resized/` and `image/val2014_resized/` directory.
 
 ```bash
 $ python resize.py
@@ -51,6 +51,8 @@ $ python prepro.py
 ```
 
 #### Train the model 
+
+To train the caption generating model, run command below. 
 
 ```bash
 $ python train.py
