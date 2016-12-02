@@ -201,14 +201,7 @@ def main():
                     np.float32)
                 feats = sess.run(vggnet.features, feed_dict={vggnet.images: image_batch})
                 all_feats[start:end, :] = feats
-            	print ("Processed %d %s features.." % (end, split))
-
-            # normalize feature vectors
-            all_feats = np.reshape(all_feats, [-1, 512])
-            mean = np.mean(all_feats, 0)
-            var = np.var(all_feats, 0)
-            all_feats = (all_feats - mean) / np.sqrt(var)
-            all_feats = np.reshape(all_feats, [-1, 196, 512])
+                print ("Processed %d %s features.." % (end, split))
 
             # use hickle to save huge feature vectors
             hickle.dump(all_feats, save_path)
