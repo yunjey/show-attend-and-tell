@@ -50,6 +50,7 @@ To generate caption dataset and image feature vectors, run command below.
 ```bash
 $ python prepro.py
 ```
+<br>
 
 ### Train the model 
 
@@ -58,6 +59,7 @@ To train the image captioning model, run command below.
 ```bash
 $ python train.py
 ```
+<br>
 
 ### (optional) Tensorboard visualization
 
@@ -67,10 +69,11 @@ Open the new terminal, run command below and open `http://localhost:6005/` into 
 ```bash
 $ tensorboard --logdir='./log' --port=6005 
 ```
+<br>
 
 ### Evaluate the model 
 
-To evaluate the model, please see `evaluate_model.ipynb`.
+To generate captions, visualize attention weights and evaluate the model, please see `evaluate_model.ipynb`.
 
 
 <br/>
