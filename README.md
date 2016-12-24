@@ -8,7 +8,10 @@
 <br/>
 
 ## References
-Referenced author's theano code can be found [here] (https://github.com/kelvinxu/arctic-captions). Additionally, this repo is an upgraded version of the existing tensorflow implementation. You can find it [here] (https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow).
+
+Author's theano code: https://github.com/kelvinxu/arctic-captions 
+
+Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow
 
 <br/>
 
