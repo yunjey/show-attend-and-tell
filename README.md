@@ -7,6 +7,7 @@
 
 <br/>
 
+
 ## References
 
 Author's theano code: https://github.com/kelvinxu/arctic-captions 
@@ -16,23 +17,20 @@ Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_a
 <br/>
 
 
-
-
-
 ## Getting Started
 
-#### Prerequisites
+### Prerequisites
 
-For evaluation, clone [pycocoevalcap](http://mscoco.org/dataset/#download) as below.
-
-```bash
-$ git clone https://github.com/tylin/coco-caption.git
-```
-
-This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, you need to install a few more packages to process [MSCOCO data set](http://mscoco.org/home/). I have provided a script to download the MSCOCO image dataset and [VGGNet19 model] (http://www.vlfeat.org/matconvnet/pretrained/). Downloading the data may take several hours depending on the network speed. Run commands below then the images will be downloaded in the `image/` directory and <b>VGGNet</b> will be downloaded in the `data/` directory.
+First, clone this repo and [pycocoevalcap](https://github.com/tylin/coco-caption.git) in same directory.
 
 ```bash
 $ git clone https://github.com/yunjey/show-attend-and-tell-tensorflow.git
+$ git clone https://github.com/tylin/coco-caption.git
+```
+
+This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, you need to install a few more packages to process [MSCOCO data set](http://mscoco.org/home/). I have provided a script to download the <i>MSCOCO image dataset</i> and [VGGNet19 model] (http://www.vlfeat.org/matconvnet/pretrained/). Downloading the data may take several hours depending on the network speed. Run commands below then the images will be downloaded in `image/` directory and <i>VGGNet19 model</i> will be downloaded in `data/` directory.
+
+```bash
 $ cd show-attend-and-tell-tensorflow
 $ pip install -r requirements.txt
 $ chmod +x ./download.sh
@@ -40,28 +38,28 @@ $ ./download.sh
 ```
 
 
-For feeding the image to the VGGNet, you should resize the MSCOCO image dataset to the fixed size of 224x224. Run command below then resized images will be stored in `image/train2014_resized/` and `image/val2014_resized/` directory.
+For feeding the image to the <i>VGGNet</i>, you should resize the <i>MSCOCO image dataset</i> to the fixed size of 224x224. Run command below then resized images will be stored in `image/train2014_resized/` and `image/val2014_resized/` directory.
 
 ```bash
 $ python resize.py
 ```
 
-Before training the model, you have to preprocess the MSCOCO caption dataset.
+Before training the model, you have to preprocess the <i>MSCOCO caption dataset</i>.
 To generate caption dataset and image feature vectors, run command below.
 
 ```bash
 $ python prepro.py
 ```
 
-#### Train the model 
+### Train the model 
 
-To train the caption generating model, run command below. 
+To train the image captioning model, run command below. 
 
 ```bash
 $ python train.py
-
 ```
-#### (optional) Tensorboard visualization
+
+### (optional) Tensorboard visualization
 
 I have provided a tensorboard visualization for real-time debugging.
 Open the new terminal, run command below and open `http://localhost:6005/` into your web browser.
@@ -70,7 +68,7 @@ Open the new terminal, run command below and open `http://localhost:6005/` into 
 $ tensorboard --logdir='./log' --port=6005 
 ```
 
-#### Evaluate the model 
+### Evaluate the model 
 
 To evaluate the model, please see `evaluate_model.ipynb`.
 
