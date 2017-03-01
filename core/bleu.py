@@ -27,7 +27,7 @@ def score(ref, hypo):
     
 
 def evaluate(data_path='./data', split='val', get_scores=False):
-    reference_path = os.path.join(data_path, "%s/%s.reference.captions.pkl" %(split, split))
+    reference_path = os.path.join(data_path, "%s/%s.references.pkl" %(split, split))
     candidate_path = os.path.join(data_path, "%s/%s.candidate.captions.pkl" %(split, split))
     
     # load caption data
