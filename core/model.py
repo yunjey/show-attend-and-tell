@@ -25,8 +25,8 @@ class CaptionGenerator(object):
             dim_embed: (optional) Dimension of word embedding.
             dim_hidden: (optional) Dimension of all hidden state.
             n_time_step: (optional) Time step size of LSTM. 
-            prev2out: (optional) previously generated word to hidden state. (see Eq (2) for explanation)
-            ctx2out: (optional) context to hidden state (see Eq (2) for explanation)
+            prev2out: (optional) previously generated word to hidden state. (see Eq (7) for explanation)
+            ctx2out: (optional) context to hidden state (see Eq (7) for explanation)
             alpha_c: (optional) Doubly stochastic regularization coefficient. (see Section (4.2.1) for explanation)
             selector: (optional) gating scalar for context vector. (see Section (4.2.1) for explanation)
             dropout: (optional) If true then dropout layer is added.
