@@ -30,9 +30,9 @@ def main():
         num_images = len(image_files)
         for i, image_file in enumerate(image_files):
             with open(os.path.join(folder, image_file), 'r+b') as f:
-                with Image.open(f) as image:
-                    image = resize_image(image)
-                    image.save(os.path.join(resized_folder, image_file), image.format)
+                image = Image.open(f)
+                image = resize_image(image)
+                image.save(os.path.join(resized_folder, image_file), image.format)
             if i % 100 == 0:
                 print 'Resized images: %d/%d' %(i, num_images)
               
