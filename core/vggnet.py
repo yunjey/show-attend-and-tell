@@ -1,5 +1,8 @@
+from scipy import ndimage
+import numpy as np
 import tensorflow as tf
 import scipy.io
+from keras.preprocessing import image
 
 
 vgg_layers = ['conv1_1', 'relu1_1', 'conv1_2', 'relu1_2', 'pool1',
@@ -58,3 +61,10 @@ class Vgg19(object):
         self.build_inputs()
         self.build_params()
         self.build_model()
+
+
+def load_and_resize_image(image_path):
+    # use Kears.image to resize the image instead of cutting some pieces
+    _img = image.load_img(image_path, target_size=(224, 224))
+    return image.img_to_array(_img)
+
