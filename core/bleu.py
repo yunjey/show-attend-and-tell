@@ -39,8 +39,13 @@ def evaluate(data_path='./data', split='val', get_scores=False):
     # make dictionary
     hypo = {}
     for i, caption in enumerate(cand):
-        hypo[i] = [caption]
-    
+        hypo[i] = [unicode(caption)]
+    _rel = {}
+    for i, captions in ref.iteritems():
+        _rel.setdefault(i, [])
+        for caption in captions:
+            _rel[i].append(unicode(caption))
+
     # compute bleu score
     final_scores = score(ref, hypo)
 

@@ -141,7 +141,9 @@ class CaptionGenerator(object):
         captions = self.captions
         batch_size = tf.shape(features)[0]
 
-        captions_in = captions[:, :self.T]      
+        # <START> 1, 2, 3, 4
+        captions_in = captions[:, :self.T]
+        # like label -> 1, 2, 3, 4, 5 ..
         captions_out = captions[:, 1:]  
         mask = tf.to_float(tf.not_equal(captions_out, self._null))
         

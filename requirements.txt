@@ -4,5 +4,6 @@ scipy
 scikit-image
 hickle
 Pillow
+jieba
 
 
