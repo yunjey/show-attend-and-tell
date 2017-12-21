@@ -3,12 +3,13 @@
 
 <br/>
 
-![alt text](jpg/attention_over_time.jpg "soft attention")
+![alt text](jpg/dev1_a.png "soft attention")
 
 <br/>
 
 
 ## References
+The source implement: https://github.com/yunjey/show-attend-and-tell
 
 Author's theano code: https://github.com/kelvinxu/arctic-captions 
 
@@ -21,11 +22,11 @@ Another tensorflow implementation: https://github.com/jazzsaxmafia/show_attend_a
 
 ### Prerequisites
 
-First, clone this repo and [pycocoevalcap](https://github.com/tylin/coco-caption.git) in same directory.
+First, clone this repo and [evaluation code](https://github.com/AIChallenger/AI_Challenger.git) in same directory.
 
 ```bash
-$ git clone https://github.com/yunjey/show-attend-and-tell-tensorflow.git
-$ git clone https://github.com/tylin/coco-caption.git
+$ git clone https://github.com/jeffrey1hu/show-attend-and-tell.git
+$ git clone https://github.com/AIChallenger/AI_Challenger.git
 ```
 
 This code is written in Python2.7 and requires [TensorFlow](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#anaconda-installation). In addition, you need to install a few more packages to process [MSCOCO data set](http://mscoco.org/home/). I have provided a script to download the <i>MSCOCO image dataset</i> and [VGGNet19 model](http://www.vlfeat.org/matconvnet/pretrained/). Downloading the data may take several hours depending on the network speed. Run commands below then the images will be downloaded in `image/` directory and <i>VGGNet19 model</i> will be downloaded in `data/` directory.
@@ -33,19 +34,13 @@ This code is written in Python2.7 and requires [TensorFlow](https://www.tensorfl
 ```bash
 $ cd show-attend-and-tell-tensorflow
 $ pip install -r requirements.txt
-$ chmod +x ./download.sh
-$ ./download.sh
+$ chmod +x ./collect_data.sh
+$ ./collect_data.sh
 ```
 
 
-For feeding the image to the <i>VGGNet</i>, you should resize the <i>MSCOCO image dataset</i> to the fixed size of 224x224. Run command below then resized images will be stored in `image/train2014_resized/` and `image/val2014_resized/` directory.
-
-```bash
-$ python resize.py
-```
-
-Before training the model, you have to preprocess the <i>MSCOCO caption dataset</i>.
-To generate caption dataset and image feature vectors, run command below.
+Before training the model, you have to preprocess the <i>Ai.challenge caption dataset</i>.
+To resize the image to 224x224 and generate caption dataset and image feature vectors, run command below.
 
 ```bash
 $ python prepro.py
@@ -78,31 +73,5 @@ To generate captions, visualize attention weights and evaluate the model, please
 
 <br/>
 
-## Results
- 
-<br/>
 
-#### Training data
-
-##### (1) Generated caption: A plane flying in the sky with a landing gear down.
-![alt text](jpg/train2.jpg "train image")
-
-##### (2) Generated caption: A giraffe and two zebra standing in the field.
-![alt text](jpg/train.jpg "train image")
-
-#### Validation data
-
-##### (1) Generated caption: A large elephant standing in a dry grass field.
-![alt text](jpg/val.jpg "val image")
-
-##### (2) Generated caption: A baby elephant standing on top of a dirt field.
-![alt text](jpg/val2.jpg "val image")
-
-#### Test data
-
-##### (1) Generated caption: A plane flying over a body of water.
-![alt text](jpg/test.jpg "test image")
-
-##### (2) Generated caption: A zebra standing in the grass near a tree.
-![alt text](jpg/test2.jpg "test image")
 
